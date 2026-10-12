@@ -1,0 +1,257 @@
+const state = { workspaces: [], currentWorkspace: null, task: null, currentPanel: "chat", sessions: new Map() };
+const $ = (id) => document.getElementById(id);
+
+// Session DOM nodes stay bound to their original task even while detached.
+const welcomeMarkup = $("project-messages").innerHTML;
+function projectSession(workspaceId) {
+  if (!state.sessions.has(workspaceId)) state.sessions.set(workspaceId, { messages: [], task: null, draft: "", command: "", serviceCommand: "", generation: 0 });
+  return state.sessions.get(workspaceId);
+}
+function renderConversation(workspaceId) {
+  if (workspaceId !== state.currentWorkspace?.id) return;
+  const container = $("project-messages"), session = projectSession(workspaceId);
+  container.replaceChildren(...session.messages);
+  if (!session.messages.length) {
+    container.innerHTML = welcomeMarkup;
+    document.querySelectorAll("[data-suggest]").forEach((item) => item.onclick = () => { $("project-input").value = item.dataset.suggest; sendProjectMessage(); });
+  }
+  container.scrollTop = container.scrollHeight;
+}
+function addProjectMessage(workspaceId, message) {
+  projectSession(workspaceId).messages.push(message);
+  renderConversation(workspaceId);
+}
+function updateSessionTask(workspaceId, task) {
+  const session = projectSession(workspaceId);
+  if (session.task?.id === task.id) session.task = task;
+  if (state.currentWorkspace?.id === workspaceId && state.task?.id === task.id) state.task = task;
+}
+
+async function api(path, options = {}) {
+  const response = await fetch(path, { headers: { "Content-Type": "application/json" }, ...options });
+  const data = await response.json();
+  if (!response.ok) { const payload = data.error && typeof data.error === "object" ? data.error : data; const error = new Error(payload.message || payload.error || "请求失败"); error.approvalRequired = Boolean(payload.approval_required); error.payload = payload; throw error; }
+  return data;
+}
+async function callTool(tool, action, workspaceId, argumentsValue = {}, approved = false) { const response = await api("/api/tools/call", { method: "POST", body: JSON.stringify({ api_version: "1.0", tool, action, workspace_id: workspaceId || "", arguments: argumentsValue, approval: approved === true ? { approved: true, source: "user_confirmation" } : {} }) }); return response.data; }
+
+function escapeHtml(value) { return String(value ?? "").replace(/[&<>\"]/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '\"': "&quot;" }[char])); }
+function showToast(message) { const toast = $("toast"); toast.textContent = message; toast.classList.add("show"); setTimeout(() => toast.classList.remove("show"), 2300); }
+function showError(error) { showToast(error.message || "请求失败"); }
+function setView(view) { document.querySelectorAll(".view").forEach((item) => item.classList.remove("active-view")); const target = $(`${view}-view`); if (target) target.classList.add("active-view"); document.querySelectorAll(".nav-item").forEach((item) => item.classList.toggle("active", item.dataset.view === view)); }
+
+async function loadWorkspaces() { const data = await api("/api/workspaces"); state.workspaces = data.items; renderWorkspaceLists(); }
+function projectIcon(type) { return type === "python" ? "Py" : type === "vue" ? "V" : type === "java-springboot" ? "J" : "⌘"; }
+function modeLabel(mode) { return mode === "divergent" ? "发散模式" : "安全执行模式"; }
+function renderWorkspaceLists() { $("sidebar-projects").innerHTML = state.workspaces.length ? state.workspaces.map((workspace) => `<button class="project-item ${state.currentWorkspace?.id === workspace.id ? "active" : ""}" data-workspace="${workspace.id}"><span class="project-symbol">${projectIcon(workspace.project_type)}</span><span><b>${escapeHtml(workspace.name)}</b><small>${escapeHtml(workspace.project_type)}</small></span></button>`).join("") : `<div class="empty-state" style="padding:18px 8px;font-size:11px">还没有工程</div>`; document.querySelectorAll("[data-workspace]").forEach((item) => item.onclick = () => openWorkspace(item.dataset.workspace)); $("project-cards").innerHTML = state.workspaces.map((workspace) => `<article class="project-card" data-workspace="${workspace.id}"><div class="project-card-top"><div class="project-card-icon">${projectIcon(workspace.project_type)}</div><span class="project-card-menu">···</span></div><h3>${escapeHtml(workspace.name)}</h3><p>${escapeHtml(workspace.root)}</p><div class="project-card-footer"><span>${escapeHtml(workspace.project_type)}</span><span>打开项目 ›</span></div></article>`).join(""); document.querySelectorAll(".project-card[data-workspace]").forEach((item) => item.onclick = () => openWorkspace(item.dataset.workspace)); $("empty-projects").classList.toggle("hidden", state.workspaces.length > 0); }
+
+async function openWorkspace(id) {
+  const workspace = state.workspaces.find((item) => item.id === id);
+  if (!workspace) return;
+  if (state.currentWorkspace?.id !== id) {
+    if (state.currentWorkspace) Object.assign(projectSession(state.currentWorkspace.id), {
+      draft: $("project-input").value, command: $("command").value, serviceCommand: $("service-command").value,
+    });
+    state.currentWorkspace = workspace;
+    const session = projectSession(id);
+    state.task = session.task;
+    $("project-input").value = session.draft;
+    $("command").value = session.command;
+    $("service-command").value = session.serviceCommand;
+    for (const target of ["file-tree", "symbol-list", "preview-path", "preview-content", "document-preview", "settings-saved"]) $(target).textContent = "";
+    $("file-preview").classList.add("hidden");
+    $("document-preview").classList.add("hidden");
+    $("symbol-count").textContent = "—";
+    $("doc-status").textContent = "未生成";
+    $("command-output").textContent = "等待执行命令…";
+    $("processes").textContent = "暂无运行中的服务";
+    renderConversation(id);
+    switchPanel("chat");
+  }
+  setView("project");
+  renderWorkspaceLists();
+  updateProjectHeader();
+  fillSettings();
+  await loadExplorer();
+}
+function updateProjectHeader() { const workspace = state.currentWorkspace; $("project-name-title").textContent = workspace.name; $("project-meta").textContent = `${workspace.project_type} · ${modeLabel(workspace.execution_mode)} · ${workspace.root}`; $("project-avatar").textContent = projectIcon(workspace.project_type); $("context-project").textContent = workspace.name; $("context-path").textContent = workspace.root; $("context-mode").textContent = modeLabel(workspace.execution_mode); $("context-description").textContent = workspace.description || "还没有添加说明"; }
+function openNewProject() { $("new-project-form").classList.remove("hidden"); $("project-name").focus(); }
+$("project-name").oninput = () => { $("project-root").placeholder = `~/.codespider/project/${$("project-name").value.trim() || "{项目名称}"}`; };
+function closeNewProject() { $("new-project-form").classList.add("hidden"); }
+async function createWorkspace() { try { const workspace = await api("/api/workspaces", { method: "POST", body: JSON.stringify({ root: $("project-root").value, name: $("project-name").value }) }); closeNewProject(); await loadWorkspaces(); await openWorkspace(workspace.id); showToast("工程已添加"); } catch (error) { showError(error); } }
+
+function switchPanel(panel) { state.currentPanel = panel; document.querySelectorAll(".project-nav-item").forEach((item) => item.classList.toggle("active", item.dataset.panel === panel)); document.querySelectorAll(".panel-view").forEach((item) => item.classList.remove("active-panel")); const target = $(`${panel}-panel`); if (target) target.classList.add("active-panel"); if (panel === "explorer") loadExplorer(); if (panel === "terminal") listProcesses(); if (panel === "settings") fillSettings(); }
+async function loadExplorer() {
+  const workspace = state.currentWorkspace;
+  if (!workspace) return;
+  try {
+    let symbols;
+    try { symbols = await callTool("code", "symbols", workspace.id); }
+    catch (error) {
+      if (state.currentWorkspace !== workspace) return;
+      if (error.approvalRequired && window.confirm("安全执行模式需要确认分析这个工程的代码结构。是否继续？")) symbols = await callTool("code", "symbols", workspace.id, {}, true);
+      else throw error;
+    }
+    if (state.currentWorkspace !== workspace) return;
+    const tree = await callTool("workspace", "list_tree", workspace.id, { limit: 1000 });
+    if (state.currentWorkspace !== workspace) return;
+    $("file-tree").innerHTML = tree.items.map((item) => `<div class="file-row" data-file="${escapeHtml(item.path)}"><span class="file-glyph">□</span>${escapeHtml(item.path)}</div>`).join("") || `<span class="muted">没有可展示的文件</span>`;
+    document.querySelectorAll("[data-file]").forEach((item) => item.onclick = () => previewFile(item.dataset.file));
+    $("symbol-list").innerHTML = symbols.items.map((item) => `<div class="symbol-row"><span>${escapeHtml(item.kind)}</span><b>${escapeHtml(item.name)}</b><small>${escapeHtml(item.path)}:${item.line}</small></div>`).join("") || `<span class="muted">暂无符号索引</span>`;
+    $("symbol-count").textContent = `${symbols.items.length} 个符号`;
+  } catch (error) { if (state.currentWorkspace === workspace) showError(error); }
+}
+async function previewFile(path, approved = false, workspace = state.currentWorkspace) {
+  if (!workspace) return;
+  try {
+    const data = await callTool("workspace", "read_file", workspace.id, { path }, approved);
+    if (state.currentWorkspace !== workspace) return;
+    $("file-preview").classList.remove("hidden");
+    $("preview-path").textContent = path;
+    $("preview-content").textContent = data.content;
+  } catch (error) {
+    if (state.currentWorkspace !== workspace) return;
+    if (error.approvalRequired && window.confirm("安全执行模式需要确认读取这个文件的内容。是否继续？")) return previewFile(path, true, workspace);
+    showError(error);
+  }
+}
+
+async function createTask(goal) {
+  const workspace = state.currentWorkspace;
+  if (!workspace) return showError(new Error("请先选择工程"));
+  const session = projectSession(workspace.id), generation = ++session.generation;
+  try {
+    const task = await api("/api/tasks", { method: "POST", body: JSON.stringify({ workspace_id: workspace.id, goal }) });
+    if (session.generation === generation) {
+      session.task = task;
+      if (state.currentWorkspace?.id === workspace.id) state.task = task;
+    }
+    appendAgentTurn(task);
+    if (state.currentWorkspace?.id === workspace.id) switchPanel("chat");
+  } catch (error) { showError(error); }
+}
+function appendAgentTurn(task) { const message = document.createElement("div"); message.className = "message agent"; const thinking = (task.thinking || []).map((item) => `<div class="thinking-line"><b>${escapeHtml(item.title)}</b><span>${escapeHtml(item.summary)}</span></div>`).join(""); const steps = (task.plan || []).map((step) => `<div class="thinking-line"><b>${step.step}. ${escapeHtml(step.title)}</b><span>${escapeHtml(step.detail)}</span></div>`).join(""); message.innerHTML = `<details class="thinking-card" open="false"><summary><span class="thinking-label">思考中</span><span class="thinking-meta">${task.plan?.length || 0} 个步骤 · 等待确认</span></summary><div class="thinking-body">${thinking}${steps}<div class="thinking-line"><b>执行目录</b><span>${escapeHtml(task.workspace_snapshot?.root || state.workspaces.find((item) => item.id === task.workspace_id)?.root || "")}</span></div><button class="approve-inline">批准执行</button></div></details>`; const button = message.querySelector(".approve-inline"); button.onclick = () => approveTask(task, button); addProjectMessage(task.workspace_id, message); }
+function appendMessage(role, text, workspaceId = state.currentWorkspace?.id) { const message = document.createElement("div"); message.className = `message ${role}`; message.innerHTML = `<div class="message-bubble">${escapeHtml(text)}</div>`; addProjectMessage(workspaceId, message); }
+async function sendProjectMessage() { const input = $("project-input"); const goal = input.value.trim(); if (!goal) return; input.value = ""; appendMessage("user", goal); await createTask(goal); }
+function sendFreeMessage() { const input = $("free-input"); const text = input.value.trim(); if (!text) return; input.value = ""; const container = $("free-messages"); const welcome = container.querySelector(".welcome-message"); if (welcome) welcome.remove(); const message = document.createElement("div"); message.className = "message user"; message.innerHTML = `<div class="message-bubble">${escapeHtml(text)}</div>`; container.appendChild(message); const answer = document.createElement("div"); answer.className = "message agent"; answer.innerHTML = `<div class="message-bubble">我可以先帮你梳理这个问题。选择一个具体工程后，我还能继续读取代码、生成补丁并运行验证。</div>`; container.appendChild(answer); container.scrollTop = container.scrollHeight; }
+
+async function approveTask(task, button) {
+  if (!task || button.disabled) return;
+  if (task.workspace_id !== state.currentWorkspace?.id) return showError(new Error("请先打开这个任务所属的工程"));
+  button.disabled = true;
+  button.textContent = "提交中…";
+  try {
+    const approved = await api(`/api/tasks/${task.id}/approve`, { method: "POST", body: "{}" });
+    updateSessionTask(task.workspace_id, approved);
+    button.textContent = "执行中…";
+    appendMessage("agent", "任务已批准，Agent 正在执行工程分析和验证命令。", task.workspace_id);
+    pollTask({ taskId: task.id, workspaceId: task.workspace_id, after: 0, button });
+  } catch (error) {
+    button.disabled = false;
+    button.textContent = "批准执行";
+    showError(error);
+  }
+}
+function appendToolEvent(event, workspaceId) { const request = event.payload?.request || {}; const message = document.createElement("div"); message.className = "message agent"; message.innerHTML = `<details class="thinking-card tool-card"><summary><span class="thinking-label">思考中</span><span class="thinking-meta">调用 ${escapeHtml(request.tool || "tool")}.${escapeHtml(request.action || "call")}</span></summary><div class="thinking-body"><div class="thinking-line"><b>工具请求</b><span>${escapeHtml(JSON.stringify(request.arguments || {}))}</span></div></div></details>`; addProjectMessage(workspaceId, message); }
+async function pollTask(run) {
+  if (!run || run.finished) return;
+  try {
+    const data = await api(`/api/tasks/${run.taskId}/events?after=${run.after}`);
+    for (const event of data.items) {
+      if (event.sequence <= run.after) continue;
+      if (event.type === "tool.call") appendToolEvent(event, run.workspaceId);
+      if (["task.succeeded", "task.failed", "task.cancelled"].includes(event.type) && !run.terminalSeen) {
+        appendMessage("agent", event.payload.message || event.payload.error || event.type, run.workspaceId);
+        run.terminalSeen = true;
+      }
+      run.after = event.sequence;
+    }
+    const latest = await api(`/api/tasks/${run.taskId}`);
+    updateSessionTask(run.workspaceId, latest);
+    run.failures = 0;
+    const terminal = ["succeeded", "failed", "cancelled"].includes(latest.status);
+    if (terminal && run.terminalSeen) {
+      run.finished = true;
+      run.button.textContent = ({ succeeded: "已完成", failed: "执行失败", cancelled: "已取消" })[latest.status];
+      return;
+    }
+    // State and events are separate reads: completion can happen between them.
+    run.button.textContent = terminal ? "同步最终结果…" : "执行中…";
+    setTimeout(() => pollTask(run), 900);
+  } catch (error) {
+    run.failures = (run.failures || 0) + 1;
+    run.button.textContent = "连接中断，正在重试…";
+    if (run.failures === 1 && state.currentWorkspace?.id === run.workspaceId) showError(error);
+    setTimeout(() => pollTask(run), Math.min(900 * 2 ** Math.min(run.failures, 5), 15000));
+  }
+}
+async function runCommand(approved = false, workspace = state.currentWorkspace, command = $("command").value.trim()) {
+  if (!workspace) return showError(new Error("请先选择工程"));
+  if (!command) return showError(new Error("请输入命令"));
+  try {
+    const result = await callTool("process", "run", workspace.id, { command }, approved);
+    if (state.currentWorkspace === workspace) $("command-output").textContent = `risk=${result.risk} exit=${result.exit_code}\n${result.output}`;
+  } catch (error) {
+    if (state.currentWorkspace !== workspace) return;
+    if (error.approvalRequired && window.confirm(`${error.message}\n\n命令：${command}\n\n是否继续执行？`)) return runCommand(true, workspace, command);
+    showError(error);
+  }
+}
+async function startService(approved = false, workspace = state.currentWorkspace, command = $("service-command").value.trim()) {
+  if (!workspace) return showError(new Error("请先选择工程"));
+  if (!command) return showError(new Error("请输入启动命令"));
+  try {
+    await callTool("process", "start", workspace.id, { command }, approved);
+    await listProcesses(workspace);
+  } catch (error) {
+    if (state.currentWorkspace !== workspace) return;
+    if (error.approvalRequired && window.confirm(`${error.message}\n\n服务命令：${command}\n\n是否继续启动？`)) return startService(true, workspace, command);
+    showError(error);
+  }
+}
+async function listProcesses(workspace = state.currentWorkspace) {
+  if (!workspace) return;
+  try {
+    const result = await callTool("process", "list", workspace.id);
+    if (state.currentWorkspace !== workspace) return;
+    $("processes").textContent = result.items.length ? result.items.map((item) => `pid=${item.pid} ${item.status} ${item.command}`).join("\n") : "暂无运行中的服务";
+  } catch (error) { if (state.currentWorkspace === workspace) showError(error); }
+}
+async function stopServices() {
+  const workspace = state.currentWorkspace;
+  if (!workspace) return;
+  try {
+    const result = await callTool("process", "list", workspace.id);
+    for (const item of result.items.filter((process) => process.status === "running")) await callTool("process", "stop", workspace.id, { pid: item.pid }, true);
+    await listProcesses(workspace);
+  } catch (error) { if (state.currentWorkspace === workspace) showError(error); }
+}
+async function generateDocument(approved = false, workspace = state.currentWorkspace) {
+  if (!workspace) return showError(new Error("请先选择工程"));
+  try {
+    const result = await callTool("document", "generate", workspace.id, {}, approved);
+    if (state.currentWorkspace !== workspace) return;
+    $("document-preview").classList.remove("hidden");
+    $("document-preview").textContent = result.content;
+    $("doc-status").textContent = "已生成";
+    showToast("文档已生成");
+  } catch (error) {
+    if (state.currentWorkspace !== workspace) return;
+    if (error.approvalRequired && window.confirm(`${error.message}\n\n是否继续读取工程并生成文档？`)) return generateDocument(true, workspace);
+    showError(error);
+  }
+}
+
+function fillSettings() { if (!state.currentWorkspace) return; $("settings-name").value = state.currentWorkspace.name || ""; $("settings-root").value = state.currentWorkspace.root || ""; $("settings-execution-mode").value = state.currentWorkspace.execution_mode || "safe"; $("settings-command-allowlist").value = (state.currentWorkspace.command_allowlist || []).join("\n"); $("settings-start-command").value = state.currentWorkspace.start_command || ""; $("settings-description").value = state.currentWorkspace.description || ""; }
+async function saveSettings() { const workspace = state.currentWorkspace; if (!workspace) return; try { const updated = await api(`/api/workspaces/${workspace.id}/settings`, { method: "POST", body: JSON.stringify({ name: $("settings-name").value, root: $("settings-root").value, execution_mode: $("settings-execution-mode").value, command_allowlist: $("settings-command-allowlist").value.split("\n").map((item) => item.trim()).filter(Boolean), start_command: $("settings-start-command").value, description: $("settings-description").value }) }); state.workspaces = state.workspaces.map((item) => item.id === updated.id ? updated : item); renderWorkspaceLists(); if (state.currentWorkspace !== workspace) return; state.currentWorkspace = updated; updateProjectHeader(); $("settings-saved").textContent = "已保存"; setTimeout(() => { if (state.currentWorkspace === updated) $("settings-saved").textContent = ""; }, 1800); } catch (error) { showError(error); } }
+async function reindexProject() { if (!state.currentWorkspace) return; try { await loadExplorer(); showToast("工程索引已刷新"); } catch (error) { showError(error); } }
+
+async function loadGlobalSettings() { try { const settings = await api("/api/settings"); $("global-provider").value = settings.provider; $("global-model").value = settings.model; $("global-base-url").value = settings.base_url || ""; $("global-temperature").value = settings.temperature; $("global-max-tokens").value = settings.max_tokens; $("global-api-key").value = ""; $("global-key-status").textContent = settings.api_key_set ? `已设置：${settings.api_key_preview}（留空则保留）` : "未设置 API Key"; $("global-model-summary").textContent = settings.model; $("global-provider-summary").textContent = settings.provider; } catch (error) { showError(error); } }
+async function saveGlobalSettings(clearApiKey = false) { try { const payload = { provider: $("global-provider").value, model: $("global-model").value, base_url: $("global-base-url").value, api_key: $("global-api-key").value, temperature: Number($("global-temperature").value), max_tokens: Number($("global-max-tokens").value), clear_api_key: clearApiKey }; const settings = await api("/api/settings", { method: "POST", body: JSON.stringify(payload) }); $("global-api-key").value = ""; $("global-key-status").textContent = settings.api_key_set ? `已设置：${settings.api_key_preview}（留空则保留）` : "未设置 API Key"; $("global-model-summary").textContent = settings.model; $("global-provider-summary").textContent = settings.provider; $("global-settings-saved").textContent = "已保存"; setTimeout(() => $("global-settings-saved").textContent = "", 1800); showToast("全局模型设置已保存"); } catch (error) { showError(error); } }
+
+document.querySelectorAll("[data-view]").forEach((item) => item.onclick = () => setView(item.dataset.view)); document.querySelectorAll("[data-panel]").forEach((item) => item.onclick = () => { if (item.dataset.panel) switchPanel(item.dataset.panel); }); document.querySelectorAll("[data-quick]").forEach((item) => item.onclick = () => { $("quick-chat").value = item.dataset.quick; $("quick-chat").focus(); }); document.querySelectorAll("[data-suggest]").forEach((item) => item.onclick = () => { $("project-input").value = item.dataset.suggest; sendProjectMessage(); });
+$("sidebar-toggle").onclick = () => $("app-shell").classList.toggle("sidebar-collapsed"); $("focus-toggle").onclick = () => $("app-shell").classList.toggle("context-hidden"); $("toggle-context").onclick = () => $("app-shell").classList.toggle("context-hidden"); $("context-close").onclick = () => $("app-shell").classList.add("context-hidden"); $("new-project").onclick = openNewProject; $("home-add-project").onclick = openNewProject; $("empty-add-project").onclick = openNewProject; $("close-new-project").onclick = closeNewProject; $("create-project").onclick = createWorkspace; $("project-send").onclick = sendProjectMessage; $("free-send").onclick = sendFreeMessage; $("refresh-explorer").onclick = loadExplorer; $("close-preview").onclick = () => $("file-preview").classList.add("hidden"); $("run-command").onclick = () => runCommand(); $("start-service").onclick = () => startService(); $("stop-services").onclick = stopServices; $("generate-doc").onclick = () => generateDocument(); $("save-settings").onclick = saveSettings; $("reindex-project").onclick = reindexProject; $("project-settings-btn").onclick = () => switchPanel("settings"); $("quick-send").onclick = () => { setView("free-chat"); $("free-input").value = $("quick-chat").value; sendFreeMessage(); };
+$("global-settings").onclick = () => { setView("global-settings"); loadGlobalSettings(); }; $("save-global-settings").onclick = () => saveGlobalSettings(false); $("clear-api-key").onclick = () => { if (window.confirm("确认清除本机保存的 API Key？")) saveGlobalSettings(true); };
+$("project-input").addEventListener("keydown", (event) => { if ((event.metaKey || event.ctrlKey) && event.key === "Enter") sendProjectMessage(); }); $("free-input").addEventListener("keydown", (event) => { if ((event.metaKey || event.ctrlKey) && event.key === "Enter") sendFreeMessage(); });
+
+api("/api/health").then(() => { $("health").innerHTML = "<i></i>在线"; loadWorkspaces().catch(showError); }).catch(() => { $("health").innerHTML = "<i style='background:#c86f62'></i>离线"; });

@@ -1,0 +1,1 @@
+"""CodeSpider local application lifecycle."""

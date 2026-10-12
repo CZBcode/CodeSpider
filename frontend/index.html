@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>CodeSpider · Agent 工作台</title>
+    <link rel="stylesheet" href="/style.css" />
+  </head>
+  <body>
+    <div class="app-shell" id="app-shell">
+      <header class="topbar">
+        <div class="topbar-left"><button class="icon-btn" id="sidebar-toggle" title="折叠侧栏">☰</button><div class="brand-mark">◈</div><strong>CodeSpider</strong><span class="topbar-product">Agent 工作台</span></div>
+        <div class="topbar-right"><span id="health" class="status-dot"><i></i>连接中</span><button class="icon-btn" id="focus-toggle" title="聚焦模式">⛶</button></div>
+      </header>
+
+      <div class="app-body">
+        <aside class="sidebar" id="sidebar">
+          <div class="sidebar-section sidebar-nav"><button class="nav-item active" data-view="home"><span class="nav-icon">⌂</span><span>首页</span></button><button class="nav-item" data-view="free-chat"><span class="nav-icon">✦</span><span>随意对话</span></button></div>
+          <div class="sidebar-heading"><span>项目</span><button class="mini-btn" id="new-project">＋</button></div>
+          <div id="sidebar-projects" class="project-list"></div>
+          <div class="sidebar-spacer"></div>
+          <button class="sidebar-user" id="global-settings"><div class="avatar">A</div><div><b>本地工作区</b><small>全局设置</small></div><span class="more">⚙</span></button>
+        </aside>
+
+        <main class="main-content">
+          <section id="home-view" class="view active-view">
+            <div class="home-inner">
+              <div class="home-hero"><div class="eyebrow">LOCAL AGENT WORKSPACE</div><h1>今天想构建什么？</h1><p>选择一个工程开始，或者直接和 CodeSpider 讨论任何想法。</p></div>
+              <div class="quick-card"><div class="quick-icon">✦</div><input id="quick-chat" placeholder="描述你的需求，或询问任何问题…" /><button id="quick-send" class="send-btn">发送 <span>⌘↵</span></button><div class="quick-actions"><button data-quick="分析当前工程结构">⌘ 分析工程</button><button data-quick="帮我设计一个实现方案">⌘ 设计方案</button><button data-quick="生成项目说明文档">⌘ 生成文档</button></div></div>
+              <div class="home-section-title"><h2>你的项目</h2><button id="home-add-project" class="text-btn">添加工程 <b>＋</b></button></div>
+              <div id="project-cards" class="project-cards"></div>
+              <div id="empty-projects" class="empty-state"><div class="empty-art">◇</div><h3>还没有工程</h3><p>添加本地工程后，CodeSpider 会帮你理解代码并执行任务。</p><button id="empty-add-project" class="primary-btn">添加第一个工程</button></div>
+              <div id="new-project-form" class="new-project-form hidden"><div class="form-heading"><div><h3>新建或添加工程</h3><p>填写项目名称即可创建。工程位置留空时使用默认目录，也可填写已有工程路径。</p></div><button id="close-new-project" class="icon-btn">×</button></div><div class="form-grid"><label>项目名称<input id="project-name" placeholder="例如：my-project" /></label><label>工程位置（可选）<input id="project-root" placeholder="~/.codespider/project/{项目名称}" /></label></div><button id="create-project" class="primary-btn">创建 / 添加工程</button></div>
+            </div>
+          </section>
+
+          <section id="free-chat-view" class="view">
+            <div class="free-chat-wrap"><div class="page-heading"><button class="back-btn" data-view="home">‹ 首页</button><div><div class="eyebrow">GENERAL CHAT</div><h1>随意对话</h1></div></div><div id="free-messages" class="chat-messages centered-messages"><div class="welcome-message"><div class="welcome-icon">✦</div><h2>没有工程也可以先聊聊</h2><p>可以讨论架构、梳理需求、设计接口，之后再把对话带入具体工程。</p></div></div><div class="composer standalone"><textarea id="free-input" rows="1" placeholder="输入消息…"></textarea><button id="free-send" class="send-round">↑</button></div></div>
+          </section>
+
+          <section id="global-settings-view" class="view">
+            <div class="global-settings-wrap"><div class="page-heading"><button class="back-btn" data-view="home">‹ 首页</button><div><div class="eyebrow">GLOBAL CONFIGURATION</div><h1>全局设置</h1></div></div><div class="global-settings-intro"><div class="settings-hero-icon">✦</div><div><h2>选择你的模型</h2><p>模型配置会应用到所有工程和随意对话。API Key 只保存在本机，读取时仅显示脱敏信息。</p></div></div><div class="global-settings-grid"><div class="global-card"><div class="global-card-heading"><div><h3>模型供应商</h3><p>设置 Agent 使用的模型网关</p></div><span id="global-settings-saved" class="saved-label"></span></div><div class="settings-form global-form"><label>供应商<select id="global-provider"><option value="openai">OpenAI</option><option value="anthropic">Anthropic</option><option value="google">Google</option><option value="local">本地模型</option><option value="custom">自定义兼容接口</option></select></label><label>模型名称<input id="global-model" placeholder="例如 gpt-4.1-mini、claude-sonnet-4-5" /></label><label>Base URL<input id="global-base-url" placeholder="留空使用供应商默认地址" /></label><label>API Key<input id="global-api-key" type="password" placeholder="留空则保留已保存的 Key" /><small id="global-key-status" class="field-help">未设置 API Key</small></label><div class="form-grid model-params"><label>Temperature<input id="global-temperature" type="number" min="0" max="2" step="0.1" /></label><label>最大 Tokens<input id="global-max-tokens" type="number" min="1" max="128000" step="1" /></label></div><div class="settings-actions"><button id="save-global-settings" class="primary-btn">保存全局设置</button><button id="clear-api-key" class="outline-btn">清除 API Key</button></div></div></div><aside class="global-card model-status-card"><div class="global-card-heading"><div><h3>当前模型</h3><p>任务创建时会读取此配置</p></div><span class="live-dot">● 已连接配置</span></div><div class="model-summary"><div class="model-orb">✦</div><b id="global-model-summary">—</b><span id="global-provider-summary">—</span></div><div class="model-note">当前 MVP 使用确定性执行器完成任务编排。接入真实模型供应商后，此处配置将用于计划、代码生成和文档生成。</div></aside></div></div>
+          </section>
+
+          <section id="project-view" class="view">
+            <div class="project-topbar"><div class="project-title"><button class="back-btn" data-view="home">‹</button><div class="project-avatar" id="project-avatar">P</div><div><h2 id="project-name-title">项目</h2><span id="project-meta">未加载</span></div></div><div class="project-actions"><button class="outline-btn" id="toggle-context">▣ <span>上下文</span></button><button class="outline-btn" id="project-settings-btn">⚙ 设置</button></div></div>
+            <div class="project-workspace">
+              <aside class="project-nav" id="project-nav"><button class="project-nav-item active" data-panel="chat"><span>✦</span> 对话</button><button class="project-nav-item" data-panel="explorer"><span>⌘</span> 工程结构</button><button class="project-nav-item" data-panel="artifacts"><span>▤</span> 产物</button><button class="project-nav-item" data-panel="terminal"><span>›_</span> 终端</button><div class="project-nav-divider"></div><button class="project-nav-item" data-panel="settings"><span>⚙</span> 项目设置</button></aside>
+              <div class="project-main">
+                <div id="chat-panel" class="panel-view active-panel"><div id="project-messages" class="chat-messages"><div class="welcome-message compact"><div class="welcome-icon">✦</div><h2>开始和这个工程协作</h2><p>描述需求、询问代码，或者让 Agent 先帮你梳理工程结构。</p><div class="suggestions"><button data-suggest="分析这个工程的模块结构">分析模块结构</button><button data-suggest="告诉我项目如何启动和测试">了解启动方式</button><button data-suggest="找出最重要的入口文件">寻找入口文件</button></div></div></div><div class="composer"><textarea id="project-input" rows="1" placeholder="询问关于这个工程的问题…"></textarea><button id="project-send" class="send-round">↑</button></div></div>
+                <div id="explorer-panel" class="panel-view"><div class="panel-heading"><div><div class="eyebrow">CODE INTELLIGENCE</div><h2>工程结构</h2></div><button id="refresh-explorer" class="outline-btn">↻ 刷新</button></div><div class="explorer-grid"><div><h3>文件</h3><div id="file-tree" class="file-tree"></div></div><div><h3>符号索引</h3><div id="symbol-list" class="symbol-list"></div></div></div><div id="file-preview" class="file-preview hidden"><div class="preview-heading"><span id="preview-path">文件预览</span><button id="close-preview" class="mini-btn">×</button></div><pre id="preview-content"></pre></div></div>
+                <div id="artifacts-panel" class="panel-view"><div class="panel-heading"><div><div class="eyebrow">PROJECT OUTPUTS</div><h2>产物</h2></div><button id="generate-doc" class="primary-btn">生成工程文档</button></div><div class="artifact-grid"><article class="artifact-card"><div class="artifact-icon blue">▤</div><div><h3>CODESPIDER.md</h3><p>基于工程符号索引生成的说明文档</p></div><span class="artifact-status" id="doc-status">未生成</span></article><article class="artifact-card"><div class="artifact-icon purple">⌘</div><div><h3>符号索引</h3><p>类、方法、函数和组件的结构化索引</p></div><span class="artifact-status" id="symbol-count">—</span></article></div><pre id="document-preview" class="document-preview hidden"></pre></div>
+                <div id="terminal-panel" class="panel-view"><div class="panel-heading"><div><div class="eyebrow">LOCAL EXECUTION</div><h2>终端</h2></div><button id="stop-services" class="outline-btn">停止服务</button></div><div class="terminal-toolbar"><input id="command" placeholder="输入命令，例如 python3 -m pytest" /><button id="run-command" class="primary-btn">执行</button></div><pre id="command-output" class="terminal-output">等待执行命令…</pre><h3 class="subheading">本地服务</h3><div class="terminal-toolbar"><input id="service-command" placeholder="例如 python3 -m http.server 8000" /><button id="start-service" class="outline-btn">启动</button></div><pre id="processes" class="terminal-output compact-terminal">暂无运行中的服务</pre></div>
+                <div id="settings-panel" class="panel-view"><div class="panel-heading"><div><div class="eyebrow">PROJECT CONFIGURATION</div><h2>项目设置</h2></div><span id="settings-saved" class="saved-label"></span></div><div class="settings-form"><label>项目名称<input id="settings-name" /></label><label>工程位置<input id="settings-root" /></label><label>执行模式<select id="settings-execution-mode"><option value="safe">安全执行模式 · 操作前询问</option><option value="divergent">发散模式 · 仅高危操作询问</option></select><small class="field-help">安全模式会要求确认命令和文件内容读取；加入命令白名单后可免确认。</small></label><label>命令白名单<textarea id="settings-command-allowlist" rows="4" placeholder="每行一个命令前缀，例如：\npython3 -m pytest\nnpm run build\nmvn -q test"></textarea><small class="field-help">完全匹配或以该前缀开头的命令可以在安全模式下直接执行。</small></label><label>启动命令<input id="settings-start-command" placeholder="例如 npm run dev 或 mvn spring-boot:run" /></label><label>工程说明<textarea id="settings-description" rows="6" placeholder="记录这个工程的用途、架构、约定和注意事项…"></textarea></label><div class="settings-actions"><button id="save-settings" class="primary-btn">保存设置</button><button id="reindex-project" class="outline-btn">重新索引工程</button></div></div></div>
+              </div>
+              <aside class="context-panel" id="context-panel"><div class="context-heading"><h3>上下文</h3><button id="context-close" class="mini-btn">×</button></div><div class="context-card"><span class="context-label">当前工程</span><b id="context-project">—</b><small id="context-path">—</small></div><div class="context-card"><span class="context-label">执行模式</span><b id="context-mode">安全执行模式</b><small>操作权限由项目设置控制</small></div><div class="context-card"><span class="context-label">工程说明</span><p id="context-description">还没有添加说明</p></div><div class="context-heading context-subheading"><h3>相关产物</h3></div><div id="context-artifacts" class="context-links"><button data-panel="explorer">工程结构 <span>›</span></button><button data-panel="artifacts">文档产物 <span>›</span></button><button data-panel="terminal">运行服务 <span>›</span></button></div></aside>
+            </div>
+          </section>
+        </main>
+      </div>
+    </div>
+    <div id="toast" class="toast"></div>
+    <script src="/app.js"></script>
+  </body>
+</html>

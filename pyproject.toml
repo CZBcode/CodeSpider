@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "codespider"
+version = "0.1.0"
+description = "Local code engineering agent workspace MVP"
+requires-python = ">=3.9"
+
+[project.scripts]
+codespider = "codespider.cli:main"
+
+[tool.setuptools]
+packages = ["codespider", "backend", "agent_client", "code_intelligence", "memory", "frontend"]
+
+[tool.setuptools.package-data]
+frontend = ["*.html", "*.js", "*.css"]
