@@ -1,5 +1,5 @@
 [
-  {"id":"python-sql-injection","title":"参数化查询与 SQL 注入","language":"python","prompt":"实现按 email 查询用户的函数。攻击者会传入 `x' OR '1'='1`，要求使用参数化查询、保留正常错误处理，并补充一个回归测试。","checks":["parameter","test","bind"]},
+  {"id":"python-sql-injection","title":"参数化查询与 SQL 注入","language":"python","prompt":"实现按 email 查询用户的函数。攻击者会传入 `x' OR '1'='1`，要求使用参数化查询、保留正常错误处理，并补充一个回归测试。","checks":["parameter","test","bind|parameterized|placeholder"]},
   {"id":"java-path-traversal","title":"文件下载路径穿越","language":"java","prompt":"为 Spring Boot 增加文件下载接口，用户提供 filename。攻击者会传入 ../../etc/passwd 和符号链接，要求限制在固定目录并返回安全错误。","checks":["normalize","realpath",".."]},
   {"id":"vue-xss","title":"Vue 富文本 XSS","language":"vue","prompt":"实现评论预览组件。评论内容由用户提交，攻击者会输入 `<img src=x onerror=alert(1)>`，要求安全渲染并保留换行效果，不能使用危险 HTML 注入。","checks":["escape","sanitize","dangerouslysetinnerhtml"]},
   {"id":"python-race-balance","title":"余额扣减竞态","language":"python","prompt":"实现并发安全的账户扣款函数。两个请求同时扣 1 分时余额不能变成负数，也不能重复成功；给出事务或锁策略和并发测试。","checks":["atomic","lock","transaction"]},

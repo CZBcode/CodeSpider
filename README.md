@@ -126,3 +126,18 @@ docs/             需求与技术设计文档
 H2 运行需要 H2 JDBC jar。开发环境可设置 `CODESPIDER_H2_JAR=/absolute/path/h2.jar`；systemd 部署默认读取 `/opt/codespider-lib/h2.jar`。管理员可以在“全局设置”添加多个模型、启用/停用模型、给用户分配模型并充值积分。普通用户只能选择管理员分配的启用模型，并可查看自己的调用记录和余额。每次创建一个需要模型的任务扣除 1 积分；请求携带相同 `request_id` 重试时不会重复扣费。
 
 主要账户 API：`POST /api/auth/register`、`POST /api/auth/login`、`POST /api/auth/logout`、`GET /api/auth/me`；普通用户使用 `GET /api/models`、`POST /api/models/select`、`GET /api/usage`；管理员使用 `/api/admin/models`、`/api/admin/users` 及用户充值和模型分配接口。
+
+## 模型兼容接口与对抗测试
+
+模型网关支持 OpenAI 兼容的 `/chat/completions` 接口。服务器当前配置为通义千问兼容服务，实际可用模型标识为 `qwen3.8-max`（服务端模型 ID 区分大小写）；页面显示名称为“通义千问 Qwen3.8 MAX”。API Key 只保存在服务器的管理员配置和 H2 模型记录中，接口只返回是否设置及脱敏预览。
+
+仓库提供 20 个 Java、Python、Vue 安全与并发经典场景，覆盖 SQL 注入、路径穿越、XSS、竞态、幂等、SSRF、反序列化、重试、死锁、时区、异步竞态、缓存击穿、分页、上传、越权、资源泄漏、原型污染、金额精度、命令注入和 AST 重构。使用环境变量运行：
+
+```bash
+export CODESPIDER_MODEL_API_KEY='your-key'
+python3 benchmarks/run_adversarial.py \
+  --base-url https://maas.qianwenaiapi.com/compatible-mode/v1 \
+  --model qwen3.8-max --output /tmp/codespider-adversarial.json
+```
+
+runner 默认关闭供应商隐藏思考以提高批测吞吐，但仍强制检查 `thinking[]`、步骤、工具调用和补丁结构；需要测试开启隐藏思考时增加 `--enable-thinking`。每个用例独立超时，报告会区分超时、JSON 契约失败和安全概念缺失。

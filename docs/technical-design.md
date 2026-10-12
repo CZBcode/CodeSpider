@@ -103,6 +103,12 @@ POST /api/admin/users/{id}/credit
 
 生产部署设置 `CODESPIDER_AUTH_REQUIRED=1` 和 `CODESPIDER_H2_JAR`。H2 jar 不打入源码仓库，由安装或部署步骤提供；缺少 jar 时服务启动会明确报错。
 
+### 2.4 OpenAI 兼容模型适配
+
+`ModelGateway` 在 provider 不是 `local` 且配置了 Base URL 与 API Key 时调用 `{base_url}/chat/completions`。请求携带 `response_format=json_object`，响应解析后必须通过 `agent.turn/v1` 校验；HTTP 错误、超时、截断 JSON 和缺少结构字段都会让任务创建失败并返回可诊断错误，不会静默生成不可审查的补丁。默认本地模型仍保留，便于离线开发和回滚。
+
+`benchmarks/run_adversarial.py` 使用同一结构契约对 20 个经典场景进行独立调用。批测默认关闭供应商隐藏思考并限制并发，避免 MAX 模型的推理延迟耗尽整轮测试；使用 `--enable-thinking` 可测试完整思考模式。报告保留模型输出、结构校验、关键词防御检查、超时和上游错误，Key 只从环境变量读取。
+
 ### 2.2 执行面
 
 - **Agent Client**：运行在用户设备或受控执行节点，向控制面注册能力和工作区。
