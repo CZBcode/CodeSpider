@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>CodeSpider · Agent 工作台</title>
     <link rel="stylesheet" href="/style.css" />
+    <link rel="stylesheet" href="/settings.css" />
   </head>
   <body>
     <div id="auth-screen" class="auth-screen hidden"><div class="auth-card"><div class="brand-mark auth-mark">◈</div><div class="eyebrow">CODESPIDER ACCOUNT</div><h1 id="auth-title">登录 CodeSpider</h1><p id="auth-subtitle">登录后管理工程、模型和积分用量。</p><form id="auth-form"><label>用户名<input id="auth-username" autocomplete="username" required minlength="3" /></label><label>密码<input id="auth-password" type="password" autocomplete="current-password" required minlength="8" /></label><button class="primary-btn" type="submit" id="auth-submit">登录</button></form><button class="text-btn auth-switch" id="auth-switch" type="button">没有账号？注册</button><p id="auth-error" class="auth-error"></p></div></div>
@@ -40,7 +41,90 @@
           </section>
 
           <section id="global-settings-view" class="view">
-            <div class="global-settings-wrap"><div class="page-heading"><button class="back-btn" data-view="home">‹ 首页</button><div><div class="eyebrow">ACCOUNT & MODELS</div><h1>账户与模型</h1></div></div><div class="global-settings-intro"><div class="settings-hero-icon">✦</div><div><h2>模型与用量</h2><p>每次模型调用消耗 1 积分。管理员配置模型并为用户分配可用模型。</p></div></div><div class="account-overview global-card"><div><span class="context-label">当前账户</span><b id="account-username">—</b></div><div><span class="context-label">积分余额</span><b id="account-balance">—</b></div><div><span class="context-label">累计调用</span><b id="account-calls">—</b></div><div class="account-model-picker"><label>当前使用模型<select id="account-model"></select></label><button id="save-account-model" class="primary-btn">保存选择</button></div></div><div id="admin-model-panel" class="global-card hidden"><div class="global-card-heading"><div><h3>管理员模型配置</h3><p>可添加多个供应商模型，并分配给普通用户。</p></div><span id="admin-model-saved" class="saved-label"></span></div><div class="form-grid"><label>显示名称<input id="admin-model-name" placeholder="例如：团队 GPT" /></label><label>供应商<select id="admin-model-provider"><option value="openai">OpenAI</option><option value="anthropic">Anthropic</option><option value="google">Google</option><option value="local">本地模型</option><option value="custom">自定义</option></select></label><label>模型标识<input id="admin-model-id" placeholder="例如 gpt-4.1-mini" /></label><label>Base URL<input id="admin-model-base-url" placeholder="可选" /></label><label>API Key<input id="admin-model-key" type="password" placeholder="可选" /></label></div><button id="add-admin-model" class="primary-btn">添加模型</button><div id="admin-model-list" class="admin-list"></div><h3 class="subheading">用户与积分</h3><div id="admin-user-list" class="admin-list"></div></div><div id="legacy-global-settings" class="global-settings-grid"><div class="global-card"><div class="global-card-heading"><div><h3>默认模型参数</h3><p>兼容旧版全局设置</p></div><span id="global-settings-saved" class="saved-label"></span></div><div class="settings-form global-form"><label>供应商<select id="global-provider"><option value="openai">OpenAI</option><option value="anthropic">Anthropic</option><option value="google">Google</option><option value="local">本地模型</option><option value="custom">自定义兼容接口</option></select></label><label>模型名称<input id="global-model" placeholder="例如 gpt-4.1-mini" /></label><label>Base URL<input id="global-base-url" /></label><label>API Key<input id="global-api-key" type="password" /><small id="global-key-status" class="field-help">未设置 API Key</small></label><div class="form-grid model-params"><label>Temperature<input id="global-temperature" type="number" min="0" max="2" step="0.1" /></label><label>最大 Tokens<input id="global-max-tokens" type="number" min="1" max="128000" step="1" /></label></div><div class="settings-actions"><button id="save-global-settings" class="primary-btn">保存默认参数</button><button id="clear-api-key" class="outline-btn">清除 API Key</button></div></div></div><aside class="global-card model-status-card"><div class="global-card-heading"><div><h3>当前模型</h3><p>任务创建时读取账户选择</p></div><span class="live-dot">● 已连接配置</span></div><div class="model-summary"><div class="model-orb">✦</div><b id="global-model-summary">—</b><span id="global-provider-summary">—</span></div><div class="model-note">模型密钥只返回脱敏状态，不会发送到普通用户界面。</div></aside></div></div>
+            <div class="global-settings-wrap">
+              <header class="settings-page-header">
+                <button class="back-btn" data-view="home">‹ 返回工作台</button>
+                <div class="settings-title-row"><div><div class="eyebrow">PREFERENCES</div><h1>设置</h1><p>管理你的账户、模型与工作方式。</p></div><span class="settings-role" id="settings-role">账户</span></div>
+              </header>
+              <nav class="settings-tabs" role="tablist" aria-label="设置分类">
+                <button id="settings-tab-account" class="settings-tab active" role="tab" aria-selected="true" aria-controls="settings-section-account" data-settings-tab="account">我的账户</button>
+                <button id="settings-tab-models" class="settings-tab hidden" role="tab" aria-selected="false" aria-controls="settings-section-models" tabindex="-1" data-settings-tab="models" data-settings-admin>模型管理</button>
+                <button id="settings-tab-users" class="settings-tab hidden" role="tab" aria-selected="false" aria-controls="settings-section-users" tabindex="-1" data-settings-tab="users" data-settings-admin>用户与积分</button>
+                <button id="settings-tab-defaults" class="settings-tab hidden" role="tab" aria-selected="false" aria-controls="settings-section-defaults" tabindex="-1" data-settings-tab="defaults" data-settings-admin>默认参数</button>
+              </nav>
+
+              <section id="settings-section-account" class="settings-section" role="tabpanel" aria-labelledby="settings-tab-account" tabindex="0" data-settings-section="account">
+                <div class="settings-section-heading"><h2>我的账户</h2><p>查看账户用量，选择下一次任务使用的模型。</p></div>
+                <div class="settings-stats">
+                  <div class="settings-stat"><span>当前账户</span><b id="account-username">—</b><small>你的 CodeSpider 工作空间</small></div>
+                  <div class="settings-stat"><span>可用积分</span><b id="account-balance">—</b><small>每次模型调用消耗 1 积分</small></div>
+                  <div class="settings-stat"><span>累计调用</span><b id="account-calls">—</b><small>已发起的模型调用次数</small></div>
+                </div>
+                <div class="settings-account-grid">
+                  <div class="global-card">
+                    <div class="global-card-heading"><div><h3>工作模型</h3><p>从可用模型中选择，保存后应用于新任务。</p></div></div>
+                    <div class="settings-form global-form">
+                      <label for="account-model">选择模型<select id="account-model"></select></label>
+                      <div class="settings-actions"><button id="save-account-model" class="primary-btn">保存选择</button><span class="settings-inline-note">不影响正在执行的任务</span></div>
+                    </div>
+                  </div>
+                  <aside class="global-card settings-current-model">
+                    <span class="settings-card-kicker">当前选择</span>
+                    <div class="model-orb" aria-hidden="true">✦</div><h3 id="global-model-summary">未选择模型</h3><span id="global-provider-summary" class="settings-provider">—</span>
+                    <p>需要更多模型或积分？请联系管理员为你的账户分配。</p>
+                  </aside>
+                </div>
+              </section>
+
+              <section id="settings-section-models" class="settings-section hidden" role="tabpanel" aria-labelledby="settings-tab-models" tabindex="0" data-settings-section="models">
+                <div class="settings-section-heading"><h2>模型管理</h2><p>配置模型连接，并为团队成员分配使用权限。</p></div>
+                <div id="admin-model-panel">
+                  <details class="global-card settings-add-model">
+                    <summary><span><b>添加模型</b><small>连接新的供应商或兼容接口</small></span><span class="settings-add-icon" aria-hidden="true">＋</span></summary>
+                    <div class="settings-form global-form">
+                      <div class="settings-fields">
+                        <label>显示名称<input id="admin-model-name" placeholder="例如：团队 GPT" /></label>
+                        <label>供应商<select id="admin-model-provider"><option value="openai">OpenAI</option><option value="anthropic">Anthropic</option><option value="google">Google</option><option value="local">本地模型</option><option value="custom">自定义</option></select></label>
+                        <label>模型标识<input id="admin-model-id" placeholder="例如：gpt-4.1-mini" /></label>
+                        <label>Base URL <span class="settings-optional">可选</span><input id="admin-model-base-url" placeholder="https://api.example.com/v1" /></label>
+                        <label class="settings-field-wide">API Key <span class="settings-optional">可选</span><input id="admin-model-key" type="password" autocomplete="new-password" placeholder="输入供应商提供的密钥" /><small class="field-help">保存后仅显示密钥状态。</small></label>
+                      </div>
+                      <div class="settings-actions"><button id="add-admin-model" class="primary-btn">添加模型</button><span id="admin-model-saved" class="saved-label" role="status"></span></div>
+                    </div>
+                  </details>
+                  <div class="settings-list-heading"><h3>已配置模型</h3><span>按需分配给团队成员</span></div>
+                  <div id="admin-model-list" class="admin-list"></div>
+                </div>
+              </section>
+
+              <section id="settings-section-users" class="settings-section hidden" role="tabpanel" aria-labelledby="settings-tab-users" tabindex="0" data-settings-section="users">
+                <div class="settings-section-heading"><h2>用户与积分</h2><p>查看团队账户余额，为用户补充可用积分。</p></div>
+                <div class="settings-info-strip"><span aria-hidden="true">ⓘ</span><p>每次模型调用消耗 1 积分。充值时填写需要增加的积分数量。</p></div>
+                <div class="settings-list-heading"><h3>团队成员</h3><span>账户与余额</span></div>
+                <div id="admin-user-list" class="admin-list"></div>
+              </section>
+
+              <section id="settings-section-defaults" class="settings-section hidden" role="tabpanel" aria-labelledby="settings-tab-defaults" tabindex="0" data-settings-section="defaults">
+                <div class="settings-section-heading"><h2>默认参数</h2><p>维护全局默认连接与生成参数。账户使用的模型请在「我的账户」中选择。</p></div>
+                <div id="legacy-global-settings" class="global-card">
+                  <div class="settings-form global-form">
+                    <div class="settings-form-section"><h3>默认连接</h3><p>设置默认供应商、模型和访问凭据。</p></div>
+                    <div class="settings-fields">
+                      <label>供应商<select id="global-provider"><option value="openai">OpenAI</option><option value="anthropic">Anthropic</option><option value="google">Google</option><option value="local">本地模型</option><option value="custom">自定义兼容接口</option></select></label>
+                      <label>模型名称<input id="global-model" placeholder="例如：gpt-4.1-mini" /></label>
+                      <label class="settings-field-wide">Base URL<input id="global-base-url" placeholder="留空使用供应商默认地址" /></label>
+                      <label class="settings-field-wide">API Key<input id="global-api-key" type="password" autocomplete="new-password" placeholder="留空保留已保存的密钥" /><small id="global-key-status" class="field-help">未设置 API Key</small></label>
+                    </div>
+                    <div class="settings-form-section settings-section-divider"><h3>生成参数</h3><p>调整输出的随机性和长度上限。</p></div>
+                    <div class="settings-fields">
+                      <label>Temperature<input id="global-temperature" type="number" min="0" max="2" step="0.1" /><small class="field-help">0–2，值越低，输出越稳定。</small></label>
+                      <label>最大 Tokens<input id="global-max-tokens" type="number" min="1" max="128000" step="1" /><small class="field-help">单次生成的 Token 数量上限。</small></label>
+                    </div>
+                    <div class="settings-actions settings-section-divider"><button id="save-global-settings" class="primary-btn">保存默认参数</button><button id="clear-api-key" class="outline-btn">清除密钥</button><span id="global-settings-saved" class="saved-label" role="status"></span></div>
+                  </div>
+                </div>
+              </section>
+            </div>
           </section>
 
           <section id="project-view" class="view">
