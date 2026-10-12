@@ -12,7 +12,8 @@ requires-python = ">=3.9"
 codespider = "codespider.cli:main"
 
 [tool.setuptools]
-packages = ["codespider", "backend", "agent_client", "code_intelligence", "memory", "frontend"]
+packages = ["codespider", "backend", "backend.h2bridge", "agent_client", "code_intelligence", "memory", "frontend"]
 
 [tool.setuptools.package-data]
 frontend = ["*.html", "*.js", "*.css"]
+backend.h2bridge = ["*.java"]

@@ -44,12 +44,14 @@ class TaskManager:
     def events(self, task_id: str, after: int = 0) -> List[Event]:
         return [Event(**item) for item in self.store.read("events", []) if item["task_id"] == task_id and item["sequence"] > after]
 
-    def create(self, workspace_id: str, goal: str, patches: Optional[List[Dict[str, Any]]] = None) -> Task:
+    def create(self, workspace_id: str, goal: str, patches: Optional[List[Dict[str, Any]]] = None, model_id: str = "", on_model_call: Any = None) -> Task:
         if not isinstance(goal, str) or not goal.strip():
             raise ValueError("goal cannot be empty")
         workspace = self.workspaces.get(workspace_id)
         turn = self._make_turn(workspace, goal)
-        task = Task(new_id("task"), workspace_id, goal.strip(), plan=turn["steps"], patches=patches or turn.get("patches", []), thinking=turn["thinking"], tool_calls=turn.get("tool_calls", []), response_schema=turn.get("schema", "agent.turn/v1"))
+        if on_model_call:
+            on_model_call()
+        task = Task(new_id("task"), workspace_id, goal.strip(), plan=turn["steps"], patches=patches or turn.get("patches", []), thinking=turn["thinking"], tool_calls=turn.get("tool_calls", []), response_schema=turn.get("schema", "agent.turn/v1"), model_id=model_id)
         task.workspace_snapshot = workspace.to_dict()
         self._save_task(task)
         self._emit(task.id, "task.created", {"goal": task.goal})

@@ -27,6 +27,7 @@ def start(directory, port, host='127.0.0.1', open_browser=False):
     log_dir = directory / 'logs'
     log_dir.mkdir(exist_ok=True)
     env = dict(os.environ, PYTHONUNBUFFERED='1')
+    env.setdefault('CODESPIDER_AUTH_REQUIRED', '1')
     source_root = str(Path(__file__).resolve().parent.parent)
     env['PYTHONPATH'] = source_root + os.pathsep + env.get('PYTHONPATH', '')
     with open(log_dir / 'daemon.log', 'ab') as log:

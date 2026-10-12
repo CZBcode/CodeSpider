@@ -10,6 +10,8 @@ Group=codespider
 WorkingDirectory=/opt/codespider
 Environment=HOME=/var/lib/codespider
 Environment=PYTHONUNBUFFERED=1
+Environment=CODESPIDER_AUTH_REQUIRED=1
+Environment=CODESPIDER_H2_JAR=/opt/codespider-lib/h2.jar
 ExecStart=/usr/bin/python3 -m codespider.daemon --data-dir /var/lib/codespider/.codespider --host 0.0.0.0 --port 8787
 Restart=on-failure
 RestartSec=5

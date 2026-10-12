@@ -118,3 +118,11 @@ docs/             需求与技术设计文档
 ```
 
 当前版本不包含真实模型供应商连接；任务执行器使用可审查的本地计划和工具协议。后续可在 `backend/model_gateway.py` 接入模型，同时不改变前端事件和工具契约。
+
+## 账户、模型与积分
+
+生产 daemon 默认开启账户认证（`CODESPIDER_AUTH_REQUIRED=1`）。打开页面后先注册或登录；数据库使用本地 H2 文件库，位于数据目录的 `h2/`。首个注册账户自动获得 `ADMIN` 角色，后续账户为普通用户。密码使用 PBKDF2-SHA256 哈希保存，服务端不保存明文密码。
+
+H2 运行需要 H2 JDBC jar。开发环境可设置 `CODESPIDER_H2_JAR=/absolute/path/h2.jar`；systemd 部署默认读取 `/opt/codespider-lib/h2.jar`。管理员可以在“全局设置”添加多个模型、启用/停用模型、给用户分配模型并充值积分。普通用户只能选择管理员分配的启用模型，并可查看自己的调用记录和余额。每次创建一个需要模型的任务扣除 1 积分；请求携带相同 `request_id` 重试时不会重复扣费。
+
+主要账户 API：`POST /api/auth/register`、`POST /api/auth/login`、`POST /api/auth/logout`、`GET /api/auth/me`；普通用户使用 `GET /api/models`、`POST /api/models/select`、`GET /api/usage`；管理员使用 `/api/admin/models`、`/api/admin/users` 及用户充值和模型分配接口。

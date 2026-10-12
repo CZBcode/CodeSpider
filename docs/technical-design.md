@@ -80,6 +80,29 @@ flowchart LR
 - **Settings Service**：保存全局模型供应商、模型、Base URL、生成参数和本机密钥状态；对外只返回密钥是否存在及脱敏预览。
 - **Audit Service**：记录不可抵赖的任务与工具事件。
 
+### 2.3 账户与模型计费（当前实现）
+
+认证服务使用 `H2Store` 通过 Java JDBC bridge 访问 H2 文件数据库。bridge 将集合序列化为 CLOB，保持 Python 端存储接口简单，并通过文件锁协调 Web 进程内的读改写。`users`、`sessions`、`models`、`user_models` 和 `usage` 集合分别保存账户、会话、模型、分配关系和调用账单；工程与任务数据仍保留在 JSON store 中。
+
+注册时在同一个原子更新中判断是否为首个用户，首个用户角色为 `ADMIN`。密码使用 PBKDF2-SHA256，登录只把 token 的 SHA-256 摘要写入 H2。管理员模型接口返回 API Key 是否存在及短预览，普通用户接口永远不返回密钥。创建任务前解析当前用户选择的模型，并通过一次持锁操作检查余额、扣除 1 积分、追加 usage 记录；`user_id + request_id` 已存在时直接复用原记录，实现重试幂等。
+
+主要接口：
+
+```text
+POST /api/auth/register             # 首个用户自动成为 ADMIN
+POST /api/auth/login|logout
+GET  /api/auth/me
+GET  /api/models                    # 当前用户可用模型
+POST /api/models/select
+GET  /api/usage
+GET/POST /api/admin/models
+POST /api/admin/models/{id}/assign
+GET  /api/admin/users
+POST /api/admin/users/{id}/credit
+```
+
+生产部署设置 `CODESPIDER_AUTH_REQUIRED=1` 和 `CODESPIDER_H2_JAR`。H2 jar 不打入源码仓库，由安装或部署步骤提供；缺少 jar 时服务启动会明确报错。
+
 ### 2.2 执行面
 
 - **Agent Client**：运行在用户设备或受控执行节点，向控制面注册能力和工作区。

@@ -53,9 +53,10 @@ class DaemonTests(unittest.TestCase):
         self.temp.cleanup()
 
     def cli(self, command, *arguments, check=True):
+        test_env = dict(os.environ, CODESPIDER_AUTH_REQUIRED="0")
         result = subprocess.run([sys.executable, '-m', 'codespider', command,
             '--data-dir', str(self.data), *arguments], cwd=ROOT,
-            capture_output=True, text=True, timeout=40)
+            capture_output=True, text=True, timeout=40, env=test_env)
         if check:
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         return result

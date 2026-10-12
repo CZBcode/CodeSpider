@@ -43,6 +43,7 @@ class Task:
     updated_at: str = field(default_factory=now_iso)
     error: Optional[str] = None
     workspace_snapshot: Dict[str, Any] = field(default_factory=dict)
+    model_id: str = ""
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
