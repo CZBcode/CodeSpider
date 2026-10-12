@@ -1,0 +1,20 @@
+[Unit]
+Description=CodeSpider local code agent daemon
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=codespider
+Group=codespider
+WorkingDirectory=/opt/codespider
+Environment=HOME=/var/lib/codespider
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/usr/bin/python3 -m codespider.daemon --data-dir /var/lib/codespider/.codespider --host 0.0.0.0 --port 8787
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

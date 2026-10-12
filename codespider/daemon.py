@@ -70,7 +70,7 @@ def stop_child(child):
         child.wait(timeout=3)
 
 
-def supervise(data_dir, port):
+def supervise(data_dir, port, host='127.0.0.1'):
     directory = Path(data_dir).resolve()
     directory.mkdir(parents=True, exist_ok=True)
     runtime = runtime_dir(directory)
@@ -83,7 +83,7 @@ def supervise(data_dir, port):
         instance = secrets.token_hex(16)
         stopping = threading.Event()
         children = {}
-        state = {'instance': instance, 'pid': os.getpid(), 'port': port,
+        state = {'instance': instance, 'pid': os.getpid(), 'host': host, 'port': port,
                  'url': 'http://127.0.0.1:%s' % port, 'status': 'starting', 'token': token}
         for sig in (signal.SIGTERM, signal.SIGINT):
             signal.signal(sig, lambda *_: stopping.set())
@@ -138,10 +138,10 @@ def supervise(data_dir, port):
             # Fail before spawning anything if another app owns the requested port.
             with socket.socket() as probe:
                 probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-                probe.bind(('127.0.0.1', port))
+                probe.bind((host, port))
             spawn('agent', 'agent_client.server', ['--data-dir', str(directory), '--socket', str(runtime / 'agent.sock')])
             wait_ready(lambda: request(runtime / 'agent.sock', token, 'GET', '/health', timeout=1).get('ok'))
-            spawn('web', 'backend.app', ['--port', str(port), '--data-dir', str(directory), '--agent-socket', str(runtime / 'agent.sock')])
+            spawn('web', 'backend.app', ['--host', host, '--port', str(port), '--data-dir', str(directory), '--agent-socket', str(runtime / 'agent.sock')])
 
             def web_ready():
                 with urllib.request.urlopen(state['url'] + '/api/health', timeout=1) as response:
@@ -183,5 +183,6 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--data-dir', required=True)
     parser.add_argument('--port', type=int, required=True)
+    parser.add_argument('--host', default='127.0.0.1')
     args = parser.parse_args()
-    raise SystemExit(supervise(args.data_dir, args.port))
+    raise SystemExit(supervise(args.data_dir, args.port, args.host))

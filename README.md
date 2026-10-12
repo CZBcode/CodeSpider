@@ -56,7 +56,7 @@ codespider restart --open
 - 项目列表、任务、记忆和模型设置会持久保存；停止/重启不会删除配置或工程文件。工程索引和工程运行日志保存在对应工程的 `.codespider/` 下。
 - daemon、Web、Agent 日志保存在数据目录的 `logs/` 下。
 - 重复启动同一实例会返回已有地址；端口被其他程序占用时启动失败，并提示日志位置，不会结束其他程序。
-- 切换端口使用 `codespider restart --port 8788`。自定义端口的后续 start/restart 命令也需传入 `--port`。
+- 切换端口使用 `codespider restart --port 8788`。自定义端口的后续 start/restart 命令也需传入 `--port`。服务器需要通过公网地址访问时使用 `codespider start --host 0.0.0.0`；本地默认仍只监听 `127.0.0.1`。
 - `stop` 停止 Web、Agent 及 Agent 启动的工程进程；执行中的命令会被终止。正在执行的任务不会自动恢复或重放。
 - 子服务退出后，daemon 清理另一子服务并报告失败，可通过日志诊断后手动重启。
 

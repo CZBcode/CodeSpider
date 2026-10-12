@@ -13,12 +13,12 @@ import webbrowser
 from codespider.daemon import contact, saved_state
 
 
-def start(directory, port, open_browser=False):
+def start(directory, port, host='127.0.0.1', open_browser=False):
     current = contact(directory)
     if current:
         if current['status'] != 'running':
             raise ValueError('daemon 正在启动或停止，请稍后重试')
-        if current['port'] != port:
+        if current['port'] != port or current.get('host', '127.0.0.1') != host:
             raise ValueError('已有实例使用端口 %s；请先 stop 再切换端口' % current['port'])
         print('CodeSpider 已运行：' + current['url'])
         if open_browser:
@@ -30,7 +30,7 @@ def start(directory, port, open_browser=False):
     source_root = str(Path(__file__).resolve().parent.parent)
     env['PYTHONPATH'] = source_root + os.pathsep + env.get('PYTHONPATH', '')
     with open(log_dir / 'daemon.log', 'ab') as log:
-        child = subprocess.Popen([sys.executable, '-m', 'codespider.daemon', '--data-dir', str(directory), '--port', str(port)],
+        child = subprocess.Popen([sys.executable, '-m', 'codespider.daemon', '--data-dir', str(directory), '--port', str(port), '--host', host],
                                  stdin=subprocess.DEVNULL, stdout=log, stderr=log,
                                  cwd=source_root, env=env, start_new_session=True)
     deadline = time.monotonic() + 30
@@ -80,6 +80,7 @@ def main(argv=None):
         item.add_argument('--data-dir', default=os.environ.get('CODESPIDER_DATA_DIR', str(Path.home() / '.codespider')))
         if command in ('start', 'restart'):
             item.add_argument('--port', type=int, default=8787)
+            item.add_argument('--host', default='127.0.0.1', help='Web 监听地址；服务器公开访问可用 0.0.0.0')
             item.add_argument('--open', action='store_true', help='就绪后打开浏览器')
         if command == 'status':
             item.add_argument('--json', action='store_true')
@@ -113,7 +114,7 @@ def main(argv=None):
             if args.command in ('stop', 'restart'):
                 stop(directory)
             if args.command in ('start', 'restart'):
-                return start(directory, args.port, args.open)
+                return start(directory, args.port, args.host, args.open)
         return 0
     except (OSError, ValueError) as exc:
         print('CodeSpider: ' + str(exc), file=sys.stderr)
