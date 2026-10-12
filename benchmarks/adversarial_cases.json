@@ -1,0 +1,22 @@
+[
+  {"id":"python-sql-injection","title":"参数化查询与 SQL 注入","language":"python","prompt":"实现按 email 查询用户的函数。攻击者会传入 `x' OR '1'='1`，要求使用参数化查询、保留正常错误处理，并补充一个回归测试。","checks":["parameter","test","bind"]},
+  {"id":"java-path-traversal","title":"文件下载路径穿越","language":"java","prompt":"为 Spring Boot 增加文件下载接口，用户提供 filename。攻击者会传入 ../../etc/passwd 和符号链接，要求限制在固定目录并返回安全错误。","checks":["normalize","realpath",".."]},
+  {"id":"vue-xss","title":"Vue 富文本 XSS","language":"vue","prompt":"实现评论预览组件。评论内容由用户提交，攻击者会输入 `<img src=x onerror=alert(1)>`，要求安全渲染并保留换行效果，不能使用危险 HTML 注入。","checks":["escape","sanitize","dangerouslysetinnerhtml"]},
+  {"id":"python-race-balance","title":"余额扣减竞态","language":"python","prompt":"实现并发安全的账户扣款函数。两个请求同时扣 1 分时余额不能变成负数，也不能重复成功；给出事务或锁策略和并发测试。","checks":["atomic","lock","transaction"]},
+  {"id":"java-idempotency","title":"支付回调幂等","language":"java","prompt":"实现支付成功回调处理。网关可能重复发送同一个 event_id，要求只记账一次、重复请求安全返回，并处理数据库唯一约束冲突。","checks":["idempot","unique","transaction"]},
+  {"id":"python-ssrf","title":"服务端请求伪造","language":"python","prompt":"实现抓取 URL 的接口。攻击者会请求 localhost、云元数据地址和 DNS 重绑定地址，要求限制协议、解析 IP、禁止内网并限制重定向。","checks":["allowlist","private","redirect"]},
+  {"id":"java-deserialization","title":"不可信反序列化","language":"java","prompt":"读取用户提交的 JSON 配置并转换成对象。攻击者会提交多态类型和恶意类名，要求禁止任意类型实例化并校验字段。","checks":["allowlist","polymorphic","validation"]},
+  {"id":"python-retry-idempotency","title":"重试导致重复写入","language":"python","prompt":"实现调用外部订单 API 的重试逻辑。网络超时后无法确定服务端是否成功，要求使用幂等键、指数退避和最大重试次数，不能盲目重复扣款。","checks":["idempot","backoff","retry"]},
+  {"id":"java-deadlock","title":"转账死锁","language":"java","prompt":"实现两个账户之间的转账，多个线程可能反向转账。要求设计稳定的锁顺序或单事务方案，并写出能暴露死锁的测试。","checks":["lock","order","deadlock"]},
+  {"id":"python-timezone","title":"跨时区日期边界","language":"python","prompt":"实现按用户时区统计某天订单数量。输入可能包含夏令时切换和 UTC 偏移，要求使用带时区的时间类型，避免 naive datetime。","checks":["timezone","aware","dst"]},
+  {"id":"vue-state-race","title":"组件异步请求竞态","language":"vue","prompt":"实现搜索框的异步结果展示。用户快速输入多个关键词时，旧请求可能晚于新请求返回，要求取消或忽略过期响应并处理加载错误。","checks":["abort","cancel","stale"]},
+  {"id":"python-cache-stampede","title":"缓存击穿","language":"python","prompt":"实现高并发缓存读取，缓存失效时只有一个请求回源，其余请求复用结果；还要处理回源失败和短 TTL，避免永久缓存坏结果。","checks":["lock","ttl","stampede"]},
+  {"id":"java-pagination","title":"稳定分页与重复数据","language":"java","prompt":"实现订单列表分页。数据会在翻页期间插入，要求使用稳定排序和 cursor 或一致性快照，避免重复和漏项，并说明索引。","checks":["cursor","stable","index"]},
+  {"id":"python-file-upload","title":"文件上传安全","language":"python","prompt":"实现头像上传。攻击者会伪造扩展名、Content-Type、超大文件和 zip bomb，要求校验大小与真实类型、随机文件名并安全存储。","checks":["size","content-type","random"]},
+  {"id":"java-rbac","title":"对象级越权","language":"java","prompt":"实现获取订单详情接口。攻击者会修改 orderId 访问别人的订单，要求同时校验身份、租户和资源所有权，不能只依赖前端隐藏按钮。","checks":["authorization","owner","tenant"]},
+  {"id":"python-resource-leak","title":"异常路径资源泄漏","language":"python","prompt":"实现读取文件并调用外部服务的函数。外部服务可能超时或抛异常，要求保证文件、连接和线程池在所有路径释放，并补充失败测试。","checks":["finally","close","context"]},
+  {"id":"vue-prototype-pollution","title":"前端深合并污染","language":"vue","prompt":"实现合并用户偏好的函数。输入可能包含 __proto__、constructor、prototype，要求拒绝危险键并避免污染全局对象。","checks":["proto","constructor","prototype"]},
+  {"id":"python-float-money","title":"金额浮点误差","language":"python","prompt":"实现购物车金额计算和折扣。金额不能因为二进制浮点产生 0.01 误差，要求使用 Decimal 或整数最小货币单位并定义舍入规则。","checks":["decimal","round","integer"]},
+  {"id":"java-command-injection","title":"命令注入","language":"java","prompt":"实现根据用户输入转换图片的服务。攻击者会传入 shell 元字符，要求不拼接 shell 命令，使用参数数组和白名单，并限制超时。","checks":["whitelist","array","timeout"]},
+  {"id":"python-ast-refactor","title":"AST 安全重构","language":"python","prompt":"把一个模块中的函数名从 `load_data` 重命名为 `read_data`，要求只修改定义、调用和导入引用，不改字符串、注释或同名局部变量，并先检查语法树。","checks":["ast","reference","syntax"]}
+]
