@@ -48,6 +48,8 @@ class GenerationWorkflowTests(unittest.TestCase):
             sent = model.call_args.args[1]
             self.assertEqual(sent['files'], {'main.py':old})
             self.assertEqual(sent['symbols'][0]['name'], 'total')
+            self.assertEqual(sent['structure']['modules'][0]['symbols'][0]['name'], 'total')
+            self.assertEqual(sent['structure']['modules'][0]['parser'], 'python-ast')
             self.assertEqual(sent['description'], 'Python 3.9 contract')
             self.assertEqual(len(task.plan), 4)
         self.context.tasks.approve(task.id)

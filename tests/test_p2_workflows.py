@@ -86,7 +86,7 @@ class P2WorkflowTests(unittest.TestCase):
         self.assertIn('`new_name`', document)
         self.assertNotIn('`old_name`', document)
 
-    def test_partial_failed_task_has_fresh_symbols_on_next_read(self):
+    def test_stale_later_patch_is_rejected_before_any_write(self):
         (self.root / 'main.py').write_text('def old_name(): pass\n')
         workspace = self.context.workspaces.create(str(self.root))
         task = self.context.tasks.create(workspace.id, 'partial change', [
@@ -96,4 +96,4 @@ class P2WorkflowTests(unittest.TestCase):
         self.context.tasks.executor.shutdown(wait=True)
         self.assertEqual(self.context.tasks.get(task.id).status, 'failed')
         symbols = self.call(workspace, 'code', 'symbols')['items']
-        self.assertEqual([item['name'] for item in symbols], ['new_name'])
+        self.assertEqual([item['name'] for item in symbols], ['old_name'])

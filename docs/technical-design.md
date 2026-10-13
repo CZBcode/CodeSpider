@@ -406,3 +406,7 @@ Monaco Editor 使用 AST 符号索引提供跳转和悬浮信息；Diff Editor �
 当前仓库使用 Python 标准库 HTTP 服务和静态前端先跑通本地闭环，避免在第一阶段被外部依赖、模型密钥或前端构建链阻塞。`backend/model_gateway.py` 已定义模型供应商边界，后续可以替换为 FastAPI、Redis、PostgreSQL、Monaco 和真实模型连接，而不改变任务、工具、事件和记忆的公开契约。
 
 当前已实现的公开能力包括：工作区创建与文件树、工程识别、Python/Java/Vue 符号索引、任务计划与审批、结构化补丁写入、命令执行、本地服务启动/停止、项目记忆、个人偏好、Skill 存储和 Markdown 文档生成。真实模型自主规划和自然语言生成补丁仍是下一阶段接入点。
+
+## 当前实现：设计契约与结构验证
+
+生成链路新增可版本化的项目设计契约、源码结构审查及哈希补丁预条件。`code_intelligence/design_contract.py` 负责契约和设计说明验证，`structure.py` 负责源码证据与依赖规则，`backend/patch_contract.py` 提供模型/Agent 共享补丁格式，任务编排负责审批与前后验证。完整接口、默认/强制行为和解析边界见 [设计契约文档](design-contracts.md)；实测见 [工程化验证](engineering-validation.md)。

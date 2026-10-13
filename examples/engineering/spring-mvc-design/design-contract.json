@@ -1,0 +1,53 @@
+{
+  "schema": "codespider.design/v1",
+  "mode": "enforce",
+  "require_design": true,
+  "require_layer_assignment": true,
+  "layers": [
+    {
+      "name": "web",
+      "paths": [
+        "src/main/java/example/web/*"
+      ],
+      "may_depend_on": [
+        "service"
+      ]
+    },
+    {
+      "name": "service",
+      "paths": [
+        "src/main/java/example/service/*"
+      ],
+      "may_depend_on": [
+        "domain",
+        "repository"
+      ]
+    },
+    {
+      "name": "domain",
+      "paths": [
+        "src/main/java/example/domain/*"
+      ],
+      "may_depend_on": []
+    },
+    {
+      "name": "repository",
+      "paths": [
+        "src/main/java/example/repository/*"
+      ],
+      "may_depend_on": []
+    },
+    {
+      "name": "composition",
+      "paths": [
+        "src/main/java/example/Application.java"
+      ],
+      "may_depend_on": [
+        "web",
+        "service",
+        "domain",
+        "repository"
+      ]
+    }
+  ]
+}

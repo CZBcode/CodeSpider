@@ -1,0 +1,153 @@
+{
+  "modules": [
+    {
+      "path": "shop/ports.py",
+      "responsibility": "Define Inventory and Pricing Protocol abstractions that decouple service from implementations.",
+      "depends_on": []
+    },
+    {
+      "path": "shop/pricing.py",
+      "responsibility": "Provide RegularPricing and BulkPricing domain strategies implementing the Pricing protocol with strict validation and HALF_UP rounding.",
+      "depends_on": []
+    },
+    {
+      "path": "shop/repository.py",
+      "responsibility": "Provide MemoryInventory infrastructure adapter implementing the Inventory protocol with hardcoded catalog data.",
+      "depends_on": [
+        "shop/ports.py"
+      ]
+    },
+    {
+      "path": "shop/service.py",
+      "responsibility": "Orchestrate checkout quoting by validating inputs, delegating to injected Inventory and Pricing protocols without importing concrete classes.",
+      "depends_on": [
+        "shop/ports.py"
+      ]
+    },
+    {
+      "path": "main.py",
+      "responsibility": "Composition root that wires concrete implementations into CheckoutService and runs demonstration quotes.",
+      "depends_on": [
+        "shop/service.py",
+        "shop/pricing.py",
+        "shop/repository.py",
+        "shop/ports.py"
+      ]
+    },
+    {
+      "path": "tests/test_shop.py",
+      "responsibility": "Comprehensive unit and integration tests covering validation, collaborator mocking, boundary conditions, rounding, protocol conformance, and instance isolation.",
+      "depends_on": [
+        "shop/service.py",
+        "shop/pricing.py",
+        "shop/repository.py",
+        "shop/ports.py"
+      ]
+    }
+  ],
+  "interfaces": [
+    {
+      "path": "shop/ports.py",
+      "symbol": "Inventory.unit_price",
+      "inputs": {
+        "sku": "str"
+      },
+      "outputs": "int",
+      "errors": [
+        "KeyError"
+      ]
+    },
+    {
+      "path": "shop/ports.py",
+      "symbol": "Pricing.total",
+      "inputs": {
+        "unit_cents": "int",
+        "quantity": "int"
+      },
+      "outputs": "int",
+      "errors": [
+        "TypeError",
+        "ValueError"
+      ]
+    },
+    {
+      "path": "shop/service.py",
+      "symbol": "CheckoutService.__init__",
+      "inputs": {
+        "inventory": "Inventory",
+        "pricing": "Pricing"
+      },
+      "outputs": "None",
+      "errors": []
+    },
+    {
+      "path": "shop/service.py",
+      "symbol": "CheckoutService.quote",
+      "inputs": {
+        "sku": "str",
+        "quantity": "int"
+      },
+      "outputs": "int",
+      "errors": [
+        "TypeError",
+        "ValueError",
+        "KeyError"
+      ]
+    },
+    {
+      "path": "shop/pricing.py",
+      "symbol": "RegularPricing.total",
+      "inputs": {
+        "unit_cents": "int",
+        "quantity": "int"
+      },
+      "outputs": "int",
+      "errors": [
+        "TypeError",
+        "ValueError"
+      ]
+    },
+    {
+      "path": "shop/pricing.py",
+      "symbol": "BulkPricing.total",
+      "inputs": {
+        "unit_cents": "int",
+        "quantity": "int"
+      },
+      "outputs": "int",
+      "errors": [
+        "TypeError",
+        "ValueError"
+      ]
+    },
+    {
+      "path": "shop/repository.py",
+      "symbol": "MemoryInventory.unit_price",
+      "inputs": {
+        "sku": "str"
+      },
+      "outputs": "int",
+      "errors": [
+        "KeyError"
+      ]
+    }
+  ],
+  "patterns": [
+    {
+      "name": "Strategy",
+      "reason": "RegularPricing and BulkPricing are interchangeable pricing algorithms behind the Pricing protocol, allowing new strategies without modifying CheckoutService."
+    },
+    {
+      "name": "Dependency Injection",
+      "reason": "CheckoutService receives Inventory and Pricing via constructor injection, depending only on Protocol abstractions rather than concrete classes."
+    },
+    {
+      "name": "Adapter",
+      "reason": "MemoryInventory adapts in-memory dictionary storage to the Inventory protocol interface expected by the service layer."
+    },
+    {
+      "name": "Repository",
+      "reason": "MemoryInventory encapsulates data access for product pricing, isolating persistence concerns from business logic."
+    }
+  ]
+}

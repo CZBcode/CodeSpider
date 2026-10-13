@@ -25,3 +25,8 @@ assert.deepEqual(requests.map(r=>r.context_approved),[false,true]);
 const preview=vm.runInContext('patchPreview({patches:[{path:"App.vue",operation:"create",replacement:"<script>alert(1)</script>"}]})',context);
 assert.ok(preview.includes('&lt;script&gt;'));assert.ok(!preview.includes('<script>'));
 console.log('PASS: generation context approval/rejection and escaped patch preview');
+const designMarkup=vm.runInContext(`designPreview({design:{modules:[{path:'a.py',responsibility:'<script>bad</script>',depends_on:[]}],interfaces:[{path:'a.py',symbol:'f',inputs:{x:'integer'},outputs:'integer',errors:[]}]},design_review:{mode:'enforce',passed:true,metrics:{modules:1,classes:0,functions:1},modules:[{path:'a.py',layer:'core',parser:'python-ast',symbols:[{kind:'function',name:'f',line:1,parameter_names:['x']}],calls:[{caller:'f',callee:'g'}]}],dependencies:[],findings:[],limitations:['Static only']}})`,context);
+assert.ok(designMarkup.includes('&lt;script&gt;'));assert.ok(!designMarkup.includes('<script>'));
+assert.ok(designMarkup.includes('f(x)'));assert.ok(designMarkup.includes('Static only'));
+assert.ok(designMarkup.includes('integer'));assert.ok(!designMarkup.includes('[object Object]'));
+console.log('PASS: design contracts, function evidence and escaped structure preview');

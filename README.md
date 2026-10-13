@@ -150,3 +150,11 @@ runner 默认关闭供应商隐藏思考以提高批测吞吐，但仍强制检�
 远端生成任务会先收集受控文件上下文和符号，安全模式先询问读取授权。已有文件使用完整 expected 校验，新文件使用独占创建；审批卡展示修改内容。生成契约恢复必须保留非空代码补丁，不能通过仅返回计划宣告生成成功。Python 执行 unittest、Java 执行 Maven test、Vue 校准依赖并执行构建和 test 脚本。未发现 Python 测试时会说明只检查语法。
 
 使用 `python3 benchmarks/run_generation.py --output /tmp/codespider-generation-new --execute` 进行端到端实测（模型环境变量同上）；支持 `--case` 单例和 `--replay` 重放。此 runner 会执行生成代码，应使用受控的一次性环境。
+
+## 设计契约与工程化生成
+
+生成任务支持模块职责、公开接口与模式适用理由，并根据源码检查依赖方向、循环、类与函数结构。工程根目录的 `design-contract.json` 可选择建议或强制模式；前端“工程结构 → 结构审查”可查看独立报告。
+
+- [设计契约与使用方式](docs/design-contracts.md)
+- [多模块工程及策略扩展示例](examples/engineering/README.md)
+- [真实生成、失败修复与独立验收报告](docs/engineering-validation.md)

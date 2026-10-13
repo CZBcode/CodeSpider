@@ -1,0 +1,132 @@
+{
+  "modules": [
+    {
+      "path": "src/main/java/example/domain/PricingPolicy.java",
+      "responsibility": "Strategy interface for computing total from unit cents and quantity",
+      "depends_on": []
+    },
+    {
+      "path": "src/main/java/example/domain/BulkPricing.java",
+      "responsibility": "Implements PricingPolicy: >=2 units gets 10% discount rounded to nearest cent; validates inputs",
+      "depends_on": [
+        "src/main/java/example/domain/PricingPolicy.java"
+      ]
+    },
+    {
+      "path": "src/main/java/example/repository/ProductRepository.java",
+      "responsibility": "Single abstract method interface for SKU-to-unit-price lookup",
+      "depends_on": []
+    },
+    {
+      "path": "src/main/java/example/repository/InMemoryProductRepository.java",
+      "responsibility": "In-memory implementation returning 1000 for book, NoSuchElementException otherwise",
+      "depends_on": [
+        "src/main/java/example/repository/ProductRepository.java"
+      ]
+    },
+    {
+      "path": "src/main/java/example/service/QuoteService.java",
+      "responsibility": "Validates quantity>0, delegates to ProductRepository for unit price and PricingPolicy for total calculation",
+      "depends_on": [
+        "src/main/java/example/repository/ProductRepository.java",
+        "src/main/java/example/domain/PricingPolicy.java"
+      ]
+    },
+    {
+      "path": "src/main/java/example/web/QuoteController.java",
+      "responsibility": "Thin HTTP adapter mapping GET /api/quote to QuoteService.quote; no business logic",
+      "depends_on": [
+        "src/main/java/example/service/QuoteService.java"
+      ]
+    },
+    {
+      "path": "src/main/java/example/web/GlobalExceptionHandler.java",
+      "responsibility": "Maps IllegalArgumentException to 400 and NoSuchElementException to 404 uniformly",
+      "depends_on": []
+    },
+    {
+      "path": "src/main/java/example/Application.java",
+      "responsibility": "Composition root: registers ProductRepository, PricingPolicy, QuoteService beans via @Bean methods",
+      "depends_on": [
+        "src/main/java/example/domain/BulkPricing.java",
+        "src/main/java/example/domain/PricingPolicy.java",
+        "src/main/java/example/repository/InMemoryProductRepository.java",
+        "src/main/java/example/repository/ProductRepository.java",
+        "src/main/java/example/service/QuoteService.java"
+      ]
+    }
+  ],
+  "interfaces": [
+    {
+      "path": "src/main/java/example/domain/PricingPolicy.java",
+      "symbol": "PricingPolicy.total",
+      "inputs": [
+        "int unitCents",
+        "int quantity"
+      ],
+      "outputs": [
+        "int totalCents"
+      ],
+      "errors": [
+        "IllegalArgumentException if unitCents<0 or quantity<=0"
+      ]
+    },
+    {
+      "path": "src/main/java/example/repository/ProductRepository.java",
+      "symbol": "ProductRepository.unitPrice",
+      "inputs": [
+        "String sku"
+      ],
+      "outputs": [
+        "int unitCents"
+      ],
+      "errors": [
+        "NoSuchElementException if SKU unknown"
+      ]
+    },
+    {
+      "path": "src/main/java/example/service/QuoteService.java",
+      "symbol": "QuoteService.quote",
+      "inputs": [
+        "String sku",
+        "int quantity"
+      ],
+      "outputs": [
+        "int totalCents"
+      ],
+      "errors": [
+        "IllegalArgumentException if quantity<=0",
+        "NoSuchElementException if SKU unknown"
+      ]
+    },
+    {
+      "path": "src/main/java/example/web/QuoteController.java",
+      "symbol": "QuoteController.getQuote",
+      "inputs": [
+        "@RequestParam(name=\"sku\") String sku",
+        "@RequestParam(name=\"quantity\") int quantity"
+      ],
+      "outputs": [
+        "Map<String,Integer> with key totalCents"
+      ],
+      "errors": [
+        "400 via GlobalExceptionHandler",
+        "404 via GlobalExceptionHandler"
+      ]
+    }
+  ],
+  "patterns": [
+    {
+      "name": "Strategy",
+      "reason": "PricingPolicy allows swapping discount algorithms (e.g., BulkPricing vs fixed pricing) without modifying QuoteService or QuoteController, verified by strategyReplaceabilityViaDifferentBean and strategyIsReplaceable tests"
+    },
+    {
+      "name": "Repository",
+      "reason": "ProductRepository abstracts data access so QuoteService depends on an interface rather than InMemoryProductRepository directly, enabling test doubles in unit tests"
+    },
+    {
+      "name": "Constructor Injection",
+      "reason": "QuoteService receives ProductRepository and PricingPolicy via constructor, making dependencies explicit and testable without Spring context in unit tests"
+    }
+  ]
+}

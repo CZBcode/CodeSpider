@@ -1,0 +1,59 @@
+{
+  "schema": "codespider.design/v1",
+  "mode": "enforce",
+  "require_design": true,
+  "require_layer_assignment": true,
+  "layers": [
+    {
+      "name": "view",
+      "paths": [
+        "src/App.vue",
+        "src/components/*"
+      ],
+      "may_depend_on": [
+        "state"
+      ]
+    },
+    {
+      "name": "state",
+      "paths": [
+        "src/composables/*"
+      ],
+      "may_depend_on": [
+        "domain",
+        "api"
+      ]
+    },
+    {
+      "name": "domain",
+      "paths": [
+        "src/domain/*"
+      ],
+      "may_depend_on": []
+    },
+    {
+      "name": "api",
+      "paths": [
+        "src/services/*"
+      ],
+      "may_depend_on": []
+    },
+    {
+      "name": "composition",
+      "paths": [
+        "src/main.js"
+      ],
+      "may_depend_on": [
+        "view",
+        "state",
+        "domain",
+        "api"
+      ]
+    }
+  ],
+  "exclude": [
+    "*.spec.js",
+    "*.test.js",
+    "vite.config.js"
+  ]
+}

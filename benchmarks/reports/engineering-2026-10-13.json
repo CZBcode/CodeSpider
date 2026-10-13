@@ -1,0 +1,1700 @@
+{
+  "evaluation": "engineering-design-v1",
+  "model": "qwen3.8-max",
+  "source": "replay_after_checker_and_model_repairs",
+  "results": [
+    {
+      "id": "python-checkout-design",
+      "passed": true,
+      "model": "qwen3.8-max",
+      "goal": "创建 Python 3.9 多模块报价工程，遵循 design-contract.json。shop/ports.py 定义 Inventory 和 Pricing Protocol。\nshop/service.py CheckoutService(inventory, pricing)，quote(sku,quantity)->int；quantity 必须为正整数且拒绝 bool，先校验再访问仓储一次，未知 sku 透传 KeyError。\nshop/pricing.py RegularPricing.total(unit_cents,quantity) 原价；BulkPricing 同接口，quantity>=2 打九折，整数分最终 HALF_UP；价格和数量类型严格校验，负价/非正数量抛 ValueError。\nshop/repository.py MemoryInventory.unit_price(sku)，book 为1000分。main.py 是组合入口。\n业务服务不能 import 具体仓储或策略、不能 isinstance 识别具体策略，构造注入并依赖 Protocol；定价函数不得 IO。支持新增策略而不改服务。\n生成 unittest 测试覆盖协作者替换、边界和实例隔离。提供 design 模块职责、公开接口输入/输出/错误和模式适用理由。不要修改设计契约文件。",
+      "generation_source": "saved_model_patches",
+      "patch_count": 8,
+      "task_status": "succeeded",
+      "design_review": {
+        "schema": "codespider.design-review/v1",
+        "mode": "enforce",
+        "passed": true,
+        "blocking": false,
+        "complete": true,
+        "modules": [
+          {
+            "path": "main.py",
+            "parser": "python-ast",
+            "symbols": [
+              {
+                "name": "main",
+                "kind": "function",
+                "line": 6,
+                "lines": 16,
+                "parameters": 0,
+                "parameter_names": [],
+                "returns": "None"
+              }
+            ],
+            "imports": [
+              "shop.pricing",
+              "shop.pricing.BulkPricing",
+              "shop.pricing.RegularPricing",
+              "shop.repository",
+              "shop.repository.MemoryInventory",
+              "shop.service",
+              "shop.service.CheckoutService"
+            ],
+            "calls": [
+              {
+                "caller": "main",
+                "callee": "MemoryInventory",
+                "line": 8
+              },
+              {
+                "caller": "main",
+                "callee": "CheckoutService",
+                "line": 10
+              },
+              {
+                "caller": "main",
+                "callee": "RegularPricing",
+                "line": 10
+              },
+              {
+                "caller": "main",
+                "callee": "CheckoutService",
+                "line": 11
+              },
+              {
+                "caller": "main",
+                "callee": "BulkPricing",
+                "line": 11
+              },
+              {
+                "caller": "main",
+                "callee": "regular_service.quote",
+                "line": 16
+              },
+              {
+                "caller": "main",
+                "callee": "bulk_service.quote",
+                "line": 17
+              },
+              {
+                "caller": "main",
+                "callee": "print",
+                "line": 19
+              },
+              {
+                "caller": "main",
+                "callee": "print",
+                "line": 20
+              },
+              {
+                "caller": "main",
+                "callee": "print",
+                "line": 21
+              }
+            ],
+            "layer": "composition",
+            "fan_out": 3,
+            "fan_in": 0
+          },
+          {
+            "path": "shop/ports.py",
+            "parser": "python-ast",
+            "symbols": [
+              {
+                "name": "Inventory",
+                "kind": "class",
+                "line": 5,
+                "lines": 16,
+                "methods": 1,
+                "bases": [
+                  "Protocol"
+                ]
+              },
+              {
+                "name": "Inventory.unit_price",
+                "kind": "function",
+                "line": 8,
+                "lines": 13,
+                "parameters": 1,
+                "parameter_names": [
+                  "self",
+                  "sku"
+                ],
+                "returns": "int"
+              },
+              {
+                "name": "Pricing",
+                "kind": "class",
+                "line": 24,
+                "lines": 18,
+                "methods": 1,
+                "bases": [
+                  "Protocol"
+                ]
+              },
+              {
+                "name": "Pricing.total",
+                "kind": "function",
+                "line": 27,
+                "lines": 15,
+                "parameters": 2,
+                "parameter_names": [
+                  "self",
+                  "unit_cents",
+                  "quantity"
+                ],
+                "returns": "int"
+              }
+            ],
+            "imports": [
+              "typing",
+              "typing.Protocol",
+              "typing.runtime_checkable"
+            ],
+            "calls": [],
+            "layer": "ports",
+            "fan_out": 0,
+            "fan_in": 1
+          },
+          {
+            "path": "shop/pricing.py",
+            "parser": "python-ast",
+            "symbols": [
+              {
+                "name": "_validate_inputs",
+                "kind": "function",
+                "line": 4,
+                "lines": 19,
+                "parameters": 2,
+                "parameter_names": [
+                  "unit_cents",
+                  "quantity"
+                ],
+                "returns": "None"
+              },
+              {
+                "name": "RegularPricing",
+                "kind": "class",
+                "line": 25,
+                "lines": 19,
+                "methods": 1,
+                "bases": []
+              },
+              {
+                "name": "RegularPricing.total",
+                "kind": "function",
+                "line": 28,
+                "lines": 16,
+                "parameters": 2,
+                "parameter_names": [
+                  "self",
+                  "unit_cents",
+                  "quantity"
+                ],
+                "returns": "int"
+              },
+              {
+                "name": "BulkPricing",
+                "kind": "class",
+                "line": 46,
+                "lines": 24,
+                "methods": 1,
+                "bases": []
+              },
+              {
+                "name": "BulkPricing.total",
+                "kind": "function",
+                "line": 49,
+                "lines": 21,
+                "parameters": 2,
+                "parameter_names": [
+                  "self",
+                  "unit_cents",
+                  "quantity"
+                ],
+                "returns": "int"
+              }
+            ],
+            "imports": [
+              "decimal",
+              "decimal.Decimal",
+              "decimal.ROUND_HALF_UP"
+            ],
+            "calls": [
+              {
+                "caller": "_validate_inputs",
+                "callee": "isinstance",
+                "line": 15
+              },
+              {
+                "caller": "_validate_inputs",
+                "callee": "isinstance",
+                "line": 15
+              },
+              {
+                "caller": "_validate_inputs",
+                "callee": "TypeError",
+                "line": 16
+              },
+              {
+                "caller": "_validate_inputs",
+                "callee": "isinstance",
+                "line": 17
+              },
+              {
+                "caller": "_validate_inputs",
+                "callee": "isinstance",
+                "line": 17
+              },
+              {
+                "caller": "_validate_inputs",
+                "callee": "TypeError",
+                "line": 18
+              },
+              {
+                "caller": "_validate_inputs",
+                "callee": "ValueError",
+                "line": 20
+              },
+              {
+                "caller": "_validate_inputs",
+                "callee": "ValueError",
+                "line": 22
+              },
+              {
+                "caller": "RegularPricing.total",
+                "callee": "_validate_inputs",
+                "line": 42
+              },
+              {
+                "caller": "BulkPricing.total",
+                "callee": "_validate_inputs",
+                "line": 64
+              },
+              {
+                "caller": "BulkPricing.total",
+                "callee": "Decimal",
+                "line": 67
+              },
+              {
+                "caller": "BulkPricing.total",
+                "callee": "Decimal",
+                "line": 67
+              },
+              {
+                "caller": "BulkPricing.total",
+                "callee": "int",
+                "line": 68
+              },
+              {
+                "caller": "BulkPricing.total",
+                "callee": "discounted.quantize",
+                "line": 68
+              },
+              {
+                "caller": "BulkPricing.total",
+                "callee": "Decimal",
+                "line": 68
+              }
+            ],
+            "layer": "domain",
+            "fan_out": 0,
+            "fan_in": 1
+          },
+          {
+            "path": "shop/repository.py",
+            "parser": "python-ast",
+            "symbols": [
+              {
+                "name": "MemoryInventory",
+                "kind": "class",
+                "line": 1,
+                "lines": 23,
+                "methods": 2,
+                "bases": []
+              },
+              {
+                "name": "MemoryInventory.__init__",
+                "kind": "function",
+                "line": 4,
+                "lines": 4,
+                "parameters": 0,
+                "parameter_names": [
+                  "self"
+                ],
+                "returns": "None"
+              },
+              {
+                "name": "MemoryInventory.unit_price",
+                "kind": "function",
+                "line": 9,
+                "lines": 15,
+                "parameters": 1,
+                "parameter_names": [
+                  "self",
+                  "sku"
+                ],
+                "returns": "int"
+              }
+            ],
+            "imports": [],
+            "calls": [
+              {
+                "caller": "MemoryInventory.unit_price",
+                "callee": "KeyError",
+                "line": 22
+              }
+            ],
+            "layer": "infrastructure",
+            "fan_out": 0,
+            "fan_in": 1
+          },
+          {
+            "path": "shop/service.py",
+            "parser": "python-ast",
+            "symbols": [
+              {
+                "name": "CheckoutService",
+                "kind": "class",
+                "line": 4,
+                "lines": 43,
+                "methods": 2,
+                "bases": []
+              },
+              {
+                "name": "CheckoutService.__init__",
+                "kind": "function",
+                "line": 11,
+                "lines": 9,
+                "parameters": 2,
+                "parameter_names": [
+                  "self",
+                  "inventory",
+                  "pricing"
+                ],
+                "returns": "None"
+              },
+              {
+                "name": "CheckoutService.quote",
+                "kind": "function",
+                "line": 21,
+                "lines": 26,
+                "parameters": 2,
+                "parameter_names": [
+                  "self",
+                  "sku",
+                  "quantity"
+                ],
+                "returns": "int"
+              }
+            ],
+            "imports": [
+              "shop.ports",
+              "shop.ports.Inventory",
+              "shop.ports.Pricing"
+            ],
+            "calls": [
+              {
+                "caller": "CheckoutService.quote",
+                "callee": "isinstance",
+                "line": 40
+              },
+              {
+                "caller": "CheckoutService.quote",
+                "callee": "isinstance",
+                "line": 40
+              },
+              {
+                "caller": "CheckoutService.quote",
+                "callee": "TypeError",
+                "line": 41
+              },
+              {
+                "caller": "CheckoutService.quote",
+                "callee": "ValueError",
+                "line": 43
+              },
+              {
+                "caller": "CheckoutService.quote",
+                "callee": "self._inventory.unit_price",
+                "line": 45
+              },
+              {
+                "caller": "CheckoutService.quote",
+                "callee": "self._pricing.total",
+                "line": 46
+              }
+            ],
+            "layer": "service",
+            "fan_out": 1,
+            "fan_in": 1
+          }
+        ],
+        "dependencies": [
+          {
+            "from": "main.py",
+            "to": "shop/pricing.py"
+          },
+          {
+            "from": "main.py",
+            "to": "shop/repository.py"
+          },
+          {
+            "from": "main.py",
+            "to": "shop/service.py"
+          },
+          {
+            "from": "shop/service.py",
+            "to": "shop/ports.py"
+          }
+        ],
+        "findings": [],
+        "metrics": {
+          "modules": 5,
+          "classes": 6,
+          "functions": 10,
+          "components": 0,
+          "dependencies": 4,
+          "errors": 0,
+          "warnings": 0
+        },
+        "limitations": [
+          "Python calls are syntactic, not runtime dispatch resolution.",
+          "Java/JS/Vue use lexical evidence, not full AST/type resolution; aliases, reflection and dynamic imports may be missed.",
+          "Metrics and import direction do not prove semantic cohesion or pattern correctness."
+        ]
+      },
+      "acceptance_exit_code": 0,
+      "seconds": 0.43,
+      "model_responses": 0,
+      "files": {
+        "design-contract.json": "af909af5587a58f80e19f1b5be00817ca7abc506e8c7ae2f1ff4002b52aed971",
+        "main.py": "13bf905cd89e4a12775ee1bf0c2f73be140df02afc466be62ab5d7e9bb2fd814",
+        "acceptance_design.py": "6091b182fe6c28b893a5299143e0ccafdbf646de9160ca36375784bba8f38adf",
+        "shop/service.py": "027797973c6fac2392959f042157b04863322cc35c1e49d688dca4df8d661c3a",
+        "shop/ports.py": "1dd30f52a9950251baead187e5826fefab9d739db68a1c56b8f92d31cb9d5ca3",
+        "shop/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "shop/pricing.py": "2b8989ce778de45e9855258b32b7834cdbcf52b68a271faff05df396bf1f74b1",
+        "shop/repository.py": "4956de67984408a3af1ad7dcf143946346ff5591ebf6a12e79840159fa260288",
+        "tests/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "tests/test_shop.py": "f240c447a6492e783a62fc5f7d32ac01555b4704ea250b8abda1d9e787f0b7c4"
+      }
+    },
+    {
+      "id": "spring-mvc-design",
+      "passed": true,
+      "model": "qwen3.8-max",
+      "goal": "补全现有 Maven Spring Boot 工程，Java release17，入口 example.Application。实现分层报价 API，遵守设计契约。\nexample.web.QuoteController GET /api/quote?sku=book&quantity=2 -> JSON {\"totalCents\":1800}。显式 @RequestParam(name=...)。\nexample.service.QuoteService(ProductRepository repository, PricingPolicy pricing)，public int quote(String sku,int quantity)，先检查 quantity>0，否则 IllegalArgumentException，再读取仓储并调用策略。\nexample.repository.ProductRepository 为单抽象方法接口 int unitPrice(String sku)，内存实现 book=1000，其余抛 NoSuchElementException。\nexample.domain.PricingPolicy 为单抽象方法接口 int total(int unitCents,int quantity)；BulkPricing 实现：两件以上九折，最终四舍五入到分，参数非法抛 IllegalArgumentException。\n业务服务通过构造函数注入接口；domain 无 Spring 依赖。Application 用 @Bean 完成策略等必要装配。\n控制器仅处理 HTTP 映射，错误统一由 web 包异常处理映射400/404，不得访问仓储，不得写定价规则。\n必须含 JUnit 业务单测和 MockMvc HTTP 测试，测试错误码及策略可替换性。返回设计职责及接口契约说明，不修改设计契约。",
+      "generation_source": "saved_model_patches",
+      "patch_count": 11,
+      "task_status": "succeeded",
+      "design_review": {
+        "schema": "codespider.design-review/v1",
+        "mode": "enforce",
+        "passed": true,
+        "blocking": false,
+        "complete": true,
+        "modules": [
+          {
+            "path": "src/main/java/example/Application.java",
+            "parser": "java-lexical",
+            "symbols": [
+              {
+                "name": "Application",
+                "kind": "class",
+                "line": 13
+              },
+              {
+                "name": "main",
+                "kind": "method",
+                "line": 15,
+                "qualified_name": "Application.main"
+              },
+              {
+                "name": "productRepository",
+                "kind": "method",
+                "line": 20,
+                "qualified_name": "Application.productRepository"
+              },
+              {
+                "name": "pricingPolicy",
+                "kind": "method",
+                "line": 25,
+                "qualified_name": "Application.pricingPolicy"
+              },
+              {
+                "name": "quoteService",
+                "kind": "method",
+                "line": 30,
+                "qualified_name": "Application.quoteService"
+              }
+            ],
+            "imports": [
+              "example.domain.BulkPricing",
+              "example.domain.PricingPolicy",
+              "example.repository.InMemoryProductRepository",
+              "example.repository.ProductRepository",
+              "example.service.QuoteService",
+              "org.springframework.boot.SpringApplication",
+              "org.springframework.boot.autoconfigure.SpringBootApplication",
+              "org.springframework.context.annotation.Bean"
+            ],
+            "calls": [],
+            "package": "example",
+            "layer": "composition",
+            "fan_out": 5,
+            "fan_in": 0
+          },
+          {
+            "path": "src/main/java/example/domain/BulkPricing.java",
+            "parser": "java-lexical",
+            "symbols": [
+              {
+                "name": "BulkPricing",
+                "kind": "class",
+                "line": 3
+              },
+              {
+                "name": "total",
+                "kind": "method",
+                "line": 6,
+                "qualified_name": "BulkPricing.total"
+              }
+            ],
+            "imports": [],
+            "calls": [],
+            "package": "example.domain",
+            "layer": "domain",
+            "fan_out": 1,
+            "fan_in": 1
+          },
+          {
+            "path": "src/main/java/example/domain/PricingPolicy.java",
+            "parser": "java-lexical",
+            "symbols": [
+              {
+                "name": "PricingPolicy",
+                "kind": "class",
+                "line": 3
+              },
+              {
+                "name": "total",
+                "kind": "method",
+                "line": 4,
+                "qualified_name": "PricingPolicy.total"
+              }
+            ],
+            "imports": [],
+            "calls": [],
+            "package": "example.domain",
+            "layer": "domain",
+            "fan_out": 0,
+            "fan_in": 3
+          },
+          {
+            "path": "src/main/java/example/repository/InMemoryProductRepository.java",
+            "parser": "java-lexical",
+            "symbols": [
+              {
+                "name": "InMemoryProductRepository",
+                "kind": "class",
+                "line": 5
+              },
+              {
+                "name": "unitPrice",
+                "kind": "method",
+                "line": 8,
+                "qualified_name": "InMemoryProductRepository.unitPrice"
+              }
+            ],
+            "imports": [
+              "java.util.NoSuchElementException"
+            ],
+            "calls": [],
+            "package": "example.repository",
+            "layer": "repository",
+            "fan_out": 1,
+            "fan_in": 1
+          },
+          {
+            "path": "src/main/java/example/repository/ProductRepository.java",
+            "parser": "java-lexical",
+            "symbols": [
+              {
+                "name": "ProductRepository",
+                "kind": "class",
+                "line": 3
+              },
+              {
+                "name": "unitPrice",
+                "kind": "method",
+                "line": 4,
+                "qualified_name": "ProductRepository.unitPrice"
+              }
+            ],
+            "imports": [],
+            "calls": [],
+            "package": "example.repository",
+            "layer": "repository",
+            "fan_out": 0,
+            "fan_in": 3
+          },
+          {
+            "path": "src/main/java/example/service/QuoteService.java",
+            "parser": "java-lexical",
+            "symbols": [
+              {
+                "name": "QuoteService",
+                "kind": "class",
+                "line": 6
+              },
+              {
+                "name": "QuoteService",
+                "kind": "method",
+                "line": 11,
+                "qualified_name": "QuoteService.QuoteService"
+              },
+              {
+                "name": "quote",
+                "kind": "method",
+                "line": 16,
+                "qualified_name": "QuoteService.quote"
+              }
+            ],
+            "imports": [
+              "example.domain.PricingPolicy",
+              "example.repository.ProductRepository"
+            ],
+            "calls": [],
+            "package": "example.service",
+            "layer": "service",
+            "fan_out": 2,
+            "fan_in": 2
+          },
+          {
+            "path": "src/main/java/example/web/GlobalExceptionHandler.java",
+            "parser": "java-lexical",
+            "symbols": [
+              {
+                "name": "GlobalExceptionHandler",
+                "kind": "class",
+                "line": 12
+              },
+              {
+                "name": "handleIllegalArgument",
+                "kind": "method",
+                "line": 15,
+                "qualified_name": "GlobalExceptionHandler.handleIllegalArgument"
+              },
+              {
+                "name": "handleNotFound",
+                "kind": "method",
+                "line": 21,
+                "qualified_name": "GlobalExceptionHandler.handleNotFound"
+              }
+            ],
+            "imports": [
+              "java.util.Map",
+              "java.util.NoSuchElementException",
+              "org.springframework.http.HttpStatus",
+              "org.springframework.http.ResponseEntity",
+              "org.springframework.web.bind.annotation.ExceptionHandler",
+              "org.springframework.web.bind.annotation.RestControllerAdvice"
+            ],
+            "calls": [],
+            "package": "example.web",
+            "layer": "web",
+            "fan_out": 0,
+            "fan_in": 0
+          },
+          {
+            "path": "src/main/java/example/web/QuoteController.java",
+            "parser": "java-lexical",
+            "symbols": [
+              {
+                "name": "QuoteController",
+                "kind": "class",
+                "line": 11
+              },
+              {
+                "name": "QuoteController",
+                "kind": "method",
+                "line": 15,
+                "qualified_name": "QuoteController.QuoteController"
+              },
+              {
+                "name": "getQuote",
+                "kind": "method",
+                "line": 20,
+                "qualified_name": "QuoteController.getQuote"
+              }
+            ],
+            "imports": [
+              "example.service.QuoteService",
+              "java.util.Map",
+              "org.springframework.web.bind.annotation.GetMapping",
+              "org.springframework.web.bind.annotation.RequestParam",
+              "org.springframework.web.bind.annotation.RestController"
+            ],
+            "calls": [],
+            "package": "example.web",
+            "layer": "web",
+            "fan_out": 1,
+            "fan_in": 0
+          }
+        ],
+        "dependencies": [
+          {
+            "from": "src/main/java/example/Application.java",
+            "to": "src/main/java/example/domain/BulkPricing.java"
+          },
+          {
+            "from": "src/main/java/example/Application.java",
+            "to": "src/main/java/example/domain/PricingPolicy.java"
+          },
+          {
+            "from": "src/main/java/example/Application.java",
+            "to": "src/main/java/example/repository/InMemoryProductRepository.java"
+          },
+          {
+            "from": "src/main/java/example/Application.java",
+            "to": "src/main/java/example/repository/ProductRepository.java"
+          },
+          {
+            "from": "src/main/java/example/Application.java",
+            "to": "src/main/java/example/service/QuoteService.java"
+          },
+          {
+            "from": "src/main/java/example/domain/BulkPricing.java",
+            "to": "src/main/java/example/domain/PricingPolicy.java"
+          },
+          {
+            "from": "src/main/java/example/repository/InMemoryProductRepository.java",
+            "to": "src/main/java/example/repository/ProductRepository.java"
+          },
+          {
+            "from": "src/main/java/example/service/QuoteService.java",
+            "to": "src/main/java/example/domain/PricingPolicy.java"
+          },
+          {
+            "from": "src/main/java/example/service/QuoteService.java",
+            "to": "src/main/java/example/repository/ProductRepository.java"
+          },
+          {
+            "from": "src/main/java/example/web/QuoteController.java",
+            "to": "src/main/java/example/service/QuoteService.java"
+          }
+        ],
+        "findings": [],
+        "metrics": {
+          "modules": 8,
+          "classes": 8,
+          "functions": 14,
+          "components": 0,
+          "dependencies": 10,
+          "errors": 0,
+          "warnings": 0
+        },
+        "limitations": [
+          "Python calls are syntactic, not runtime dispatch resolution.",
+          "Java/JS/Vue use lexical evidence, not full AST/type resolution; aliases, reflection and dynamic imports may be missed.",
+          "Metrics and import direction do not prove semantic cohesion or pattern correctness."
+        ]
+      },
+      "acceptance_exit_code": 0,
+      "seconds": 8.68,
+      "model_responses": 0,
+      "files": {
+        "pom.xml": "c81a29763c1f9e07e406383594fdf4d0cc7c26aa0c88ddf9340ee37524862bfc",
+        "design-contract.json": "b7d26dca78cc2aff0ad9ea9d19063bf9d9dd4ea46035a4d141fdc8329d2c9644",
+        "src/test/java/example/ArchitectureAcceptanceTest.java": "981e0a0526b2a3a42bb755cb4e531040eed7960bfe0aa63590618ce5b917c094",
+        "src/test/java/example/web/QuoteControllerTest.java": "15bfe6c0160f3f86f0e621a222c1a36596a463c23095379364f3e72c68a592e9",
+        "src/test/java/example/service/QuoteServiceTest.java": "bf1250fb39bc315a90231a08a53fc9b71170fa0932997cdb233d499d15822f88",
+        "src/main/java/example/Application.java": "a40723c85fb0d6df7ebf89674c44ad4b1179b8f3bcf1adca444d9691a5527eee",
+        "src/main/java/example/repository/ProductRepository.java": "dd1e9654bfa4c8fed60fe0baeebea2e745752ad3d9da83c673dc69e0981e9ff4",
+        "src/main/java/example/repository/InMemoryProductRepository.java": "a8bc8bfa369d2b48fb5420861cbfe237e2af5fdd5ae3fd695da1d8b222d7f768",
+        "src/main/java/example/web/GlobalExceptionHandler.java": "143d9777ba2cc481b253fd6df9144d0cd41e39602333adbaa0435ede225880d6",
+        "src/main/java/example/web/QuoteController.java": "4ef6f6eda4b819f12269efc8f568ea95a8caf6d3dbe3431920cd83832928ddee",
+        "src/main/java/example/service/QuoteService.java": "2ad5d41a284c27ebc702678616c2f2bff0df86b2f2f343a783beca26f5285856",
+        "src/main/java/example/domain/BulkPricing.java": "980ea4ec550bde9b7ff781a5f7f5cdb3d88d89bb1ff8694f21490b20e3fb5cec",
+        "src/main/java/example/domain/PricingPolicy.java": "698c7d43ebab966c96ef5bb124dbeede8cfb9973a653b9a9f49f998d299cab79"
+      }
+    },
+    {
+      "id": "vue-catalog-design",
+      "passed": true,
+      "model": "qwen3.8-max",
+      "goal": "创建完整可运行 Vue3 目录浏览工程，使用已有 Vite/Vitest 配置和包版本。遵守设计契约，view 禁止直接依赖 services/domain。\nsrc/domain/pricing.js 导出纯函数 totalCents(rows)，rows 每项 priceCents 非负整数、quantity 正整数，非法抛 Error，不修改输入；只使用整数分。\nsrc/services/catalogApi.js 导出 async fetchProducts()，返回至少[{id:'book',priceCents:1000}]，本例可内存 Promise，无真实后端。\nsrc/composables/useCatalog.js 导出 useCatalog(fetcher=fetchProducts)，返回 products/loading/error 三个 ref 和 async load()；错误转 error 字符串不向外抛；重试清除 error；实例隔离；并发 load 只接受最新调用结果及 loading/error 状态。\nsrc/App.vue 调用 useCatalog() 和 load()，用 src/components/CatalogList.vue 展示产品。产品 data-testid=product-book，重试按钮 data-testid=retry 可触发 load。父组件处理状态编排，子组件通过 props/emits 通信，视图不直接调用 API。\nindex.html 和 src/main.js 完整入口。提供至少纯函数、composable、组件集成三类 Vitest 测试。输出设计职责、接口输入输出错误和选择模式的理由，不修改契约文件。",
+      "generation_source": "saved_model_patches",
+      "patch_count": 12,
+      "task_status": "succeeded",
+      "design_review": {
+        "schema": "codespider.design-review/v1",
+        "mode": "enforce",
+        "passed": true,
+        "blocking": false,
+        "complete": true,
+        "modules": [
+          {
+            "path": "src/App.vue",
+            "parser": "js-vue-lexical",
+            "symbols": [
+              {
+                "name": "App",
+                "kind": "component",
+                "line": 1
+              }
+            ],
+            "imports": [
+              "./components/CatalogList.vue",
+              "./composables/useCatalog.js",
+              "vue"
+            ],
+            "calls": [],
+            "package": "",
+            "layer": "view",
+            "fan_out": 2,
+            "fan_in": 1
+          },
+          {
+            "path": "src/components/CatalogList.vue",
+            "parser": "js-vue-lexical",
+            "symbols": [
+              {
+                "name": "CatalogList",
+                "kind": "component",
+                "line": 1
+              }
+            ],
+            "imports": [],
+            "calls": [],
+            "package": "",
+            "layer": "view",
+            "fan_out": 0,
+            "fan_in": 1
+          },
+          {
+            "path": "src/composables/useCatalog.js",
+            "parser": "js-vue-lexical",
+            "symbols": [
+              {
+                "name": "useCatalog",
+                "kind": "function",
+                "line": 9
+              },
+              {
+                "name": "load",
+                "kind": "function",
+                "line": 15
+              }
+            ],
+            "imports": [
+              "../services/catalogApi.js",
+              "vue"
+            ],
+            "calls": [],
+            "package": "",
+            "layer": "state",
+            "fan_out": 1,
+            "fan_in": 1
+          },
+          {
+            "path": "src/domain/pricing.js",
+            "parser": "js-vue-lexical",
+            "symbols": [
+              {
+                "name": "totalCents",
+                "kind": "function",
+                "line": 6
+              }
+            ],
+            "imports": [],
+            "calls": [],
+            "package": "",
+            "layer": "domain",
+            "fan_out": 0,
+            "fan_in": 0
+          },
+          {
+            "path": "src/main.js",
+            "parser": "js-vue-lexical",
+            "symbols": [],
+            "imports": [
+              "./App.vue",
+              "vue"
+            ],
+            "calls": [],
+            "package": "",
+            "layer": "composition",
+            "fan_out": 1,
+            "fan_in": 0
+          },
+          {
+            "path": "src/services/catalogApi.js",
+            "parser": "js-vue-lexical",
+            "symbols": [
+              {
+                "name": "fetchProducts",
+                "kind": "function",
+                "line": 11
+              }
+            ],
+            "imports": [],
+            "calls": [],
+            "package": "",
+            "layer": "api",
+            "fan_out": 0,
+            "fan_in": 1
+          }
+        ],
+        "dependencies": [
+          {
+            "from": "src/App.vue",
+            "to": "src/components/CatalogList.vue"
+          },
+          {
+            "from": "src/App.vue",
+            "to": "src/composables/useCatalog.js"
+          },
+          {
+            "from": "src/composables/useCatalog.js",
+            "to": "src/services/catalogApi.js"
+          },
+          {
+            "from": "src/main.js",
+            "to": "src/App.vue"
+          }
+        ],
+        "findings": [],
+        "metrics": {
+          "modules": 6,
+          "classes": 0,
+          "functions": 4,
+          "components": 2,
+          "dependencies": 4,
+          "errors": 0,
+          "warnings": 0
+        },
+        "limitations": [
+          "Python calls are syntactic, not runtime dispatch resolution.",
+          "Java/JS/Vue use lexical evidence, not full AST/type resolution; aliases, reflection and dynamic imports may be missed.",
+          "Metrics and import direction do not prove semantic cohesion or pattern correctness."
+        ]
+      },
+      "acceptance_exit_code": 0,
+      "seconds": 28.85,
+      "model_responses": 0,
+      "files": {
+        "index.html": "069dec9f4a96ef6d49fd8fc928872f91c858ed3d290b7b9b86dbc1bb1d47d46d",
+        "vite.config.js": "1db7fc83004107680f5d507e5bcc7770614319b61cc131ab0a633d292d797d31",
+        "acceptance.test.js": "12966e622d09c50c2c94966a62742ea8d62569679a8b349512eb2e8f7fcc0638",
+        "package-lock.json": "d7db9bf2ca5bd3beacffcf2914e24b484456144a3ec43e8e34ce774fd04d6be4",
+        "package.json": "30e193896147d171200742649893fbe35c6be87ccb96e99ad7b8347dfeb4f8f4",
+        "design-contract.json": "bf234f72a2c891ef9767c03129a631fcc72a6839aacef1afd335e8da43044821",
+        "src/App.vue": "3ca8eb8d2513aaa57519c7225be6577d5c8bdd28d3df6a8c9b60abdacfbe5c1c",
+        "src/main.js": "825eedf9d4f95671f74393c7eadfe510287d3b1d1649f4f4f57f8e6c00cf2775",
+        "src/composables/useCatalog.js": "2e585044c000a67ed5b045a90f4f5e560f2e88be6d003e9d76634ad7fd2f0e56",
+        "src/composables/useCatalog.spec.js": "b5cac3d976ac6ba6e754b9325ce56e30fca11f3c23041c434caf231cb5359f56",
+        "src/components/CatalogList.spec.js": "3e13bc8d0e99bbd32c84ea84226473fddfca8843db69b9c115cb2f497fbde8c8",
+        "src/components/CatalogList.vue": "9a19dc4a870d7fc321c5665a7691f457b900a2e157f4cb510e20e0caf2d86f8a",
+        "src/domain/pricing.spec.js": "a497475222b9e52713b7d4a8ac8b8ac5b67a251937244d0adfa92a1ff770e630",
+        "src/domain/pricing.js": "e3f84e7a982bc6d62cea562b79bd1e95f34018d97ec031c50b69e3f64aff8042",
+        "src/services/catalogApi.js": "94eb24cd30736cfb7f07fe566d17f04a0efb7645c03c88cb96d1652f2a3258df"
+      }
+    },
+    {
+      "id": "python-strategy-extension",
+      "passed": true,
+      "model": "qwen3.8-max",
+      "goal": "在已有 Python 报价工程增加一种策略。只在 shop/pricing.py 新增 CappedPricing(cap_cents)，total(unit_cents,quantity) 返回正常整数总价与 cap 的较小值，不应用九折。\ncap 必须为正整数且拒绝 bool，价格/数量沿用现有严格校验，零单价也不能绕过数量校验。实例不共享 cap。\n现有 RegularPricing/BulkPricing 行为保持不变，复用已有校验函数；不修改 CheckoutService、ports、repository、main 或 tests/test_shop.py，也不要改变它们的空白或注释。\n新增 tests/test_capped.py 覆盖新策略及通过既有服务注入使用。遵守设计契约，提供新增接口与职责说明。\n使用 context.structure 理解已有函数与类关系，修改文件优先使用 context.file_hashes 对应的 base_sha256。",
+      "generation_source": "live_model",
+      "patch_count": 2,
+      "task_status": "succeeded",
+      "design_review": {
+        "schema": "codespider.design-review/v1",
+        "mode": "enforce",
+        "passed": true,
+        "blocking": false,
+        "complete": true,
+        "modules": [
+          {
+            "path": "main.py",
+            "parser": "python-ast",
+            "symbols": [
+              {
+                "name": "main",
+                "kind": "function",
+                "line": 6,
+                "lines": 16,
+                "parameters": 0,
+                "parameter_names": [],
+                "returns": "None"
+              }
+            ],
+            "imports": [
+              "shop.pricing",
+              "shop.pricing.BulkPricing",
+              "shop.pricing.RegularPricing",
+              "shop.repository",
+              "shop.repository.MemoryInventory",
+              "shop.service",
+              "shop.service.CheckoutService"
+            ],
+            "calls": [
+              {
+                "caller": "main",
+                "callee": "MemoryInventory",
+                "line": 8
+              },
+              {
+                "caller": "main",
+                "callee": "CheckoutService",
+                "line": 10
+              },
+              {
+                "caller": "main",
+                "callee": "RegularPricing",
+                "line": 10
+              },
+              {
+                "caller": "main",
+                "callee": "CheckoutService",
+                "line": 11
+              },
+              {
+                "caller": "main",
+                "callee": "BulkPricing",
+                "line": 11
+              },
+              {
+                "caller": "main",
+                "callee": "regular_service.quote",
+                "line": 16
+              },
+              {
+                "caller": "main",
+                "callee": "bulk_service.quote",
+                "line": 17
+              },
+              {
+                "caller": "main",
+                "callee": "print",
+                "line": 19
+              },
+              {
+                "caller": "main",
+                "callee": "print",
+                "line": 20
+              },
+              {
+                "caller": "main",
+                "callee": "print",
+                "line": 21
+              }
+            ],
+            "layer": "composition",
+            "fan_out": 3,
+            "fan_in": 0
+          },
+          {
+            "path": "shop/ports.py",
+            "parser": "python-ast",
+            "symbols": [
+              {
+                "name": "Inventory",
+                "kind": "class",
+                "line": 5,
+                "lines": 16,
+                "methods": 1,
+                "bases": [
+                  "Protocol"
+                ]
+              },
+              {
+                "name": "Inventory.unit_price",
+                "kind": "function",
+                "line": 8,
+                "lines": 13,
+                "parameters": 1,
+                "parameter_names": [
+                  "self",
+                  "sku"
+                ],
+                "returns": "int"
+              },
+              {
+                "name": "Pricing",
+                "kind": "class",
+                "line": 24,
+                "lines": 18,
+                "methods": 1,
+                "bases": [
+                  "Protocol"
+                ]
+              },
+              {
+                "name": "Pricing.total",
+                "kind": "function",
+                "line": 27,
+                "lines": 15,
+                "parameters": 2,
+                "parameter_names": [
+                  "self",
+                  "unit_cents",
+                  "quantity"
+                ],
+                "returns": "int"
+              }
+            ],
+            "imports": [
+              "typing",
+              "typing.Protocol",
+              "typing.runtime_checkable"
+            ],
+            "calls": [],
+            "layer": "ports",
+            "fan_out": 0,
+            "fan_in": 1
+          },
+          {
+            "path": "shop/pricing.py",
+            "parser": "python-ast",
+            "symbols": [
+              {
+                "name": "_validate_inputs",
+                "kind": "function",
+                "line": 4,
+                "lines": 19,
+                "parameters": 2,
+                "parameter_names": [
+                  "unit_cents",
+                  "quantity"
+                ],
+                "returns": "None"
+              },
+              {
+                "name": "RegularPricing",
+                "kind": "class",
+                "line": 25,
+                "lines": 19,
+                "methods": 1,
+                "bases": []
+              },
+              {
+                "name": "RegularPricing.total",
+                "kind": "function",
+                "line": 28,
+                "lines": 16,
+                "parameters": 2,
+                "parameter_names": [
+                  "self",
+                  "unit_cents",
+                  "quantity"
+                ],
+                "returns": "int"
+              },
+              {
+                "name": "BulkPricing",
+                "kind": "class",
+                "line": 46,
+                "lines": 24,
+                "methods": 1,
+                "bases": []
+              },
+              {
+                "name": "BulkPricing.total",
+                "kind": "function",
+                "line": 49,
+                "lines": 21,
+                "parameters": 2,
+                "parameter_names": [
+                  "self",
+                  "unit_cents",
+                  "quantity"
+                ],
+                "returns": "int"
+              },
+              {
+                "name": "CappedPricing",
+                "kind": "class",
+                "line": 72,
+                "lines": 41,
+                "methods": 2,
+                "bases": []
+              },
+              {
+                "name": "CappedPricing.__init__",
+                "kind": "function",
+                "line": 78,
+                "lines": 16,
+                "parameters": 1,
+                "parameter_names": [
+                  "self",
+                  "cap_cents"
+                ],
+                "returns": "None"
+              },
+              {
+                "name": "CappedPricing.total",
+                "kind": "function",
+                "line": 95,
+                "lines": 18,
+                "parameters": 2,
+                "parameter_names": [
+                  "self",
+                  "unit_cents",
+                  "quantity"
+                ],
+                "returns": "int"
+              }
+            ],
+            "imports": [
+              "decimal",
+              "decimal.Decimal",
+              "decimal.ROUND_HALF_UP"
+            ],
+            "calls": [
+              {
+                "caller": "_validate_inputs",
+                "callee": "isinstance",
+                "line": 15
+              },
+              {
+                "caller": "_validate_inputs",
+                "callee": "isinstance",
+                "line": 15
+              },
+              {
+                "caller": "_validate_inputs",
+                "callee": "TypeError",
+                "line": 16
+              },
+              {
+                "caller": "_validate_inputs",
+                "callee": "isinstance",
+                "line": 17
+              },
+              {
+                "caller": "_validate_inputs",
+                "callee": "isinstance",
+                "line": 17
+              },
+              {
+                "caller": "_validate_inputs",
+                "callee": "TypeError",
+                "line": 18
+              },
+              {
+                "caller": "_validate_inputs",
+                "callee": "ValueError",
+                "line": 20
+              },
+              {
+                "caller": "_validate_inputs",
+                "callee": "ValueError",
+                "line": 22
+              },
+              {
+                "caller": "RegularPricing.total",
+                "callee": "_validate_inputs",
+                "line": 42
+              },
+              {
+                "caller": "BulkPricing.total",
+                "callee": "_validate_inputs",
+                "line": 64
+              },
+              {
+                "caller": "BulkPricing.total",
+                "callee": "Decimal",
+                "line": 67
+              },
+              {
+                "caller": "BulkPricing.total",
+                "callee": "Decimal",
+                "line": 67
+              },
+              {
+                "caller": "BulkPricing.total",
+                "callee": "int",
+                "line": 68
+              },
+              {
+                "caller": "BulkPricing.total",
+                "callee": "discounted.quantize",
+                "line": 68
+              },
+              {
+                "caller": "BulkPricing.total",
+                "callee": "Decimal",
+                "line": 68
+              },
+              {
+                "caller": "CappedPricing.__init__",
+                "callee": "isinstance",
+                "line": 89
+              },
+              {
+                "caller": "CappedPricing.__init__",
+                "callee": "isinstance",
+                "line": 89
+              },
+              {
+                "caller": "CappedPricing.__init__",
+                "callee": "TypeError",
+                "line": 90
+              },
+              {
+                "caller": "CappedPricing.__init__",
+                "callee": "ValueError",
+                "line": 92
+              },
+              {
+                "caller": "CappedPricing.total",
+                "callee": "_validate_inputs",
+                "line": 110
+              },
+              {
+                "caller": "CappedPricing.total",
+                "callee": "min",
+                "line": 112
+              }
+            ],
+            "layer": "domain",
+            "fan_out": 0,
+            "fan_in": 1
+          },
+          {
+            "path": "shop/repository.py",
+            "parser": "python-ast",
+            "symbols": [
+              {
+                "name": "MemoryInventory",
+                "kind": "class",
+                "line": 1,
+                "lines": 23,
+                "methods": 2,
+                "bases": []
+              },
+              {
+                "name": "MemoryInventory.__init__",
+                "kind": "function",
+                "line": 4,
+                "lines": 4,
+                "parameters": 0,
+                "parameter_names": [
+                  "self"
+                ],
+                "returns": "None"
+              },
+              {
+                "name": "MemoryInventory.unit_price",
+                "kind": "function",
+                "line": 9,
+                "lines": 15,
+                "parameters": 1,
+                "parameter_names": [
+                  "self",
+                  "sku"
+                ],
+                "returns": "int"
+              }
+            ],
+            "imports": [],
+            "calls": [
+              {
+                "caller": "MemoryInventory.unit_price",
+                "callee": "KeyError",
+                "line": 22
+              }
+            ],
+            "layer": "infrastructure",
+            "fan_out": 0,
+            "fan_in": 1
+          },
+          {
+            "path": "shop/service.py",
+            "parser": "python-ast",
+            "symbols": [
+              {
+                "name": "CheckoutService",
+                "kind": "class",
+                "line": 4,
+                "lines": 43,
+                "methods": 2,
+                "bases": []
+              },
+              {
+                "name": "CheckoutService.__init__",
+                "kind": "function",
+                "line": 11,
+                "lines": 9,
+                "parameters": 2,
+                "parameter_names": [
+                  "self",
+                  "inventory",
+                  "pricing"
+                ],
+                "returns": "None"
+              },
+              {
+                "name": "CheckoutService.quote",
+                "kind": "function",
+                "line": 21,
+                "lines": 26,
+                "parameters": 2,
+                "parameter_names": [
+                  "self",
+                  "sku",
+                  "quantity"
+                ],
+                "returns": "int"
+              }
+            ],
+            "imports": [
+              "shop.ports",
+              "shop.ports.Inventory",
+              "shop.ports.Pricing"
+            ],
+            "calls": [
+              {
+                "caller": "CheckoutService.quote",
+                "callee": "isinstance",
+                "line": 40
+              },
+              {
+                "caller": "CheckoutService.quote",
+                "callee": "isinstance",
+                "line": 40
+              },
+              {
+                "caller": "CheckoutService.quote",
+                "callee": "TypeError",
+                "line": 41
+              },
+              {
+                "caller": "CheckoutService.quote",
+                "callee": "ValueError",
+                "line": 43
+              },
+              {
+                "caller": "CheckoutService.quote",
+                "callee": "self._inventory.unit_price",
+                "line": 45
+              },
+              {
+                "caller": "CheckoutService.quote",
+                "callee": "self._pricing.total",
+                "line": 46
+              }
+            ],
+            "layer": "service",
+            "fan_out": 1,
+            "fan_in": 1
+          }
+        ],
+        "dependencies": [
+          {
+            "from": "main.py",
+            "to": "shop/pricing.py"
+          },
+          {
+            "from": "main.py",
+            "to": "shop/repository.py"
+          },
+          {
+            "from": "main.py",
+            "to": "shop/service.py"
+          },
+          {
+            "from": "shop/service.py",
+            "to": "shop/ports.py"
+          }
+        ],
+        "findings": [],
+        "metrics": {
+          "modules": 5,
+          "classes": 7,
+          "functions": 12,
+          "components": 0,
+          "dependencies": 4,
+          "errors": 0,
+          "warnings": 0
+        },
+        "limitations": [
+          "Python calls are syntactic, not runtime dispatch resolution.",
+          "Java/JS/Vue use lexical evidence, not full AST/type resolution; aliases, reflection and dynamic imports may be missed.",
+          "Metrics and import direction do not prove semantic cohesion or pattern correctness."
+        ]
+      },
+      "acceptance_exit_code": 0,
+      "preserved_files": [
+        "shop/service.py",
+        "shop/ports.py",
+        "shop/repository.py",
+        "main.py",
+        "tests/test_shop.py"
+      ],
+      "seconds": 55.75,
+      "model_responses": 1,
+      "files": {
+        "design-contract.json": "af909af5587a58f80e19f1b5be00817ca7abc506e8c7ae2f1ff4002b52aed971",
+        "main.py": "13bf905cd89e4a12775ee1bf0c2f73be140df02afc466be62ab5d7e9bb2fd814",
+        "acceptance_extension.py": "d425c2f031db4c7c46b5fc16822d387e5af4c2616629da9fb7562ac1ca64c190",
+        "shop/service.py": "027797973c6fac2392959f042157b04863322cc35c1e49d688dca4df8d661c3a",
+        "shop/ports.py": "1dd30f52a9950251baead187e5826fefab9d739db68a1c56b8f92d31cb9d5ca3",
+        "shop/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "shop/pricing.py": "883e8a257b76078b47f4610e484304dcf1130c0e0cd758306730cff924e8a6d0",
+        "shop/repository.py": "4956de67984408a3af1ad7dcf143946346ff5591ebf6a12e79840159fa260288",
+        "tests/test_capped.py": "b63b6568023784c4949876b2a06434ae9120ac81d273dad53667f66d097e3eba",
+        "tests/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "tests/test_shop.py": "f240c447a6492e783a62fc5f7d32ac01555b4704ea250b8abda1d9e787f0b7c4"
+      }
+    }
+  ],
+  "passed": 4,
+  "total": 4,
+  "notes": [
+    "Final results replay recorded model-generated implementations; no manual changes to implementation or generated tests.",
+    "The initial live round was rejected by design validation. Checker fixes handled empty package markers, structured interface descriptions, implicit Java interface methods and Vue component symbols.",
+    "Spring required a model repair of duplicate test/application bean definitions. The first repair attempt failed exact-original checks; hash-precondition support enabled the next model repair.",
+    "Vue required a model repair for an undocumented product name assumption and a clarified empty error string contract.",
+    "Independent oracle corrections: allow documented TypeError or ValueError for invalid Python types; exercise Vue retry in an actual failure state rather than requiring a retry button after success.",
+    "Final replay merges original and repair design declarations, omits generated dependency lock files from model patches, and installs dependencies again.",
+    "Fourth case is a fresh live-model extension on the existing generated Python project, with five files preserved byte-for-byte. Delivered Python oracle files are placed under tests to keep production architecture scope accurate."
+  ],
+  "earlier_runs": [
+    {
+      "run": "engineering-run1",
+      "id": "spring-mvc-design",
+      "passed": false,
+      "generation_source": "live_model",
+      "model_responses": 3,
+      "error": "model response failed contract validation after 3 attempts: design descriptions must be non-empty bounded strings"
+    },
+    {
+      "run": "engineering-run1",
+      "id": "python-checkout-design",
+      "passed": false,
+      "generation_source": "live_model",
+      "model_responses": 1,
+      "error": "model response failed contract validation after 3 attempts: design missing changed module responsibilities: shop/__init__.py"
+    },
+    {
+      "run": "engineering-run1",
+      "id": "vue-catalog-design",
+      "passed": false,
+      "generation_source": "live_model",
+      "model_responses": 3,
+      "error": "model response failed contract validation after 3 attempts: design interface symbol was not found: CatalogList"
+    },
+    {
+      "run": "engineering-python-replay2",
+      "id": "python-checkout-design",
+      "passed": false,
+      "generation_source": "saved_model_response",
+      "model_responses": 0,
+      "error": "independent acceptance tests failed; see acceptance.log"
+    },
+    {
+      "run": "engineering-replay3",
+      "id": "spring-mvc-design",
+      "passed": false,
+      "generation_source": "saved_model_response",
+      "model_responses": 0,
+      "error": "verification failed (exit code 1): mvn -q test"
+    },
+    {
+      "run": "engineering-replay3",
+      "id": "python-checkout-design",
+      "passed": true,
+      "generation_source": "saved_model_response",
+      "model_responses": 0
+    },
+    {
+      "run": "engineering-spring-repair",
+      "id": "spring-mvc-design",
+      "passed": false,
+      "generation_source": "live_model_repair",
+      "model_responses": 3,
+      "error": "model response failed contract validation after 3 attempts: patch expected must equal the full provided file: src/test/java/example/web/QuoteControllerTest.java"
+    },
+    {
+      "run": "engineering-spring-repair2",
+      "id": "spring-mvc-design",
+      "passed": true,
+      "generation_source": "live_model_repair",
+      "model_responses": 1
+    },
+    {
+      "run": "engineering-vue-replay",
+      "id": "vue-catalog-design",
+      "passed": false,
+      "generation_source": "saved_model_response",
+      "model_responses": 0,
+      "error": "independent acceptance tests failed; see acceptance.log"
+    },
+    {
+      "run": "engineering-vue-repair",
+      "id": "vue-catalog-design",
+      "passed": false,
+      "generation_source": "live_model_repair",
+      "model_responses": 1,
+      "error": "independent acceptance tests failed; see acceptance.log"
+    }
+  ],
+  "negative_structure_tests": [
+    {
+      "case": "python-checkout-design",
+      "modified_path": "shop/service.py",
+      "blocked": true,
+      "findings": [
+        {
+          "code": "unassigned_module",
+          "path": "acceptance_design.py",
+          "message": "Production module has no assigned responsibility layer",
+          "severity": "error"
+        },
+        {
+          "code": "forbidden_dependency",
+          "path": "shop/service.py",
+          "message": "shop/service.py -> main.py (service -> composition)",
+          "severity": "error"
+        },
+        {
+          "code": "dependency_cycle",
+          "path": "shop/service.py",
+          "message": "shop/service.py -> main.py -> shop/service.py",
+          "severity": "error"
+        }
+      ]
+    },
+    {
+      "case": "spring-mvc-design",
+      "modified_path": "src/main/java/example/web/QuoteController.java",
+      "blocked": true,
+      "findings": [
+        {
+          "code": "forbidden_dependency",
+          "path": "src/main/java/example/web/QuoteController.java",
+          "message": "src/main/java/example/web/QuoteController.java -> src/main/java/example/repository/ProductRepository.java (web -> repository)",
+          "severity": "error"
+        }
+      ]
+    },
+    {
+      "case": "vue-catalog-design",
+      "modified_path": "src/App.vue",
+      "blocked": true,
+      "findings": [
+        {
+          "code": "forbidden_dependency",
+          "path": "src/App.vue",
+          "message": "src/App.vue -> src/services/catalogApi.js (view -> api)",
+          "severity": "error"
+        }
+      ]
+    }
+  ]
+}

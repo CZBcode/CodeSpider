@@ -1,0 +1,101 @@
+{
+  "modules": [
+    {
+      "path": "src/domain/pricing.js",
+      "responsibility": "Pure function to calculate total price in cents from rows",
+      "depends_on": []
+    },
+    {
+      "path": "src/services/catalogApi.js",
+      "responsibility": "Async fetcher returning mock product catalog data",
+      "depends_on": []
+    },
+    {
+      "path": "src/composables/useCatalog.js",
+      "responsibility": "Reactive composable managing products/loading/error state with latest-wins concurrency",
+      "depends_on": [
+        "src/services/catalogApi.js"
+      ]
+    },
+    {
+      "path": "src/components/CatalogList.vue",
+      "responsibility": "Presentational component rendering products list, loading, and error states via props/emits",
+      "depends_on": []
+    },
+    {
+      "path": "src/App.vue",
+      "responsibility": "Root view composing useCatalog state into CatalogList, handling retry orchestration",
+      "depends_on": [
+        "src/composables/useCatalog.js",
+        "src/components/CatalogList.vue"
+      ]
+    },
+    {
+      "path": "src/main.js",
+      "responsibility": "Vue app entry point mounting App to DOM",
+      "depends_on": [
+        "src/App.vue"
+      ]
+    }
+  ],
+  "interfaces": [
+    {
+      "path": "src/domain/pricing.js",
+      "symbol": "totalCents",
+      "inputs": "rows: Array<{priceCents: number, quantity: number}>",
+      "outputs": "number (total cents)",
+      "errors": "Error if rows not array, priceCents negative/non-integer, or quantity non-positive/non-integer"
+    },
+    {
+      "path": "src/services/catalogApi.js",
+      "symbol": "fetchProducts",
+      "inputs": "none",
+      "outputs": "Promise<Array<{id: string, priceCents: number}>>",
+      "errors": "none (in-memory mock)"
+    },
+    {
+      "path": "src/composables/useCatalog.js",
+      "symbol": "useCatalog",
+      "inputs": "fetcher?: () => Promise<Array>",
+      "outputs": "{ products: Ref<Array>, loading: Ref<boolean>, error: Ref<string>, load: () => Promise<void> }",
+      "errors": "Errors captured in error ref as string, never thrown outward"
+    },
+    {
+      "path": "src/components/CatalogList.vue",
+      "symbol": "CatalogList",
+      "inputs": "props: { products: Array, loading: boolean, error: string }",
+      "outputs": "emits: ['retry']",
+      "errors": "none"
+    }
+  ],
+  "patterns": [
+    {
+      "name": "Dependency Injection",
+      "reason": "useCatalog accepts fetcher parameter enabling test doubles and decoupling from concrete API implementation"
+    },
+    {
+      "name": "Composition API",
+      "reason": "useCatalog encapsulates reactive state and behavior as a reusable composable, keeping App.vue thin and separating concerns."
+    },
+    {
+      "name": "Props/Emits",
+      "reason": "CatalogList is a pure presentational component communicating only through props and events, ensuring view layer has no service dependencies."
+    },
+    {
+      "name": "Concurrency Guard (callId)",
+      "reason": "Prevents race conditions when multiple load() calls overlap; only the latest invocation updates reactive state."
+    },
+    {
+      "name": "Latest-Wins Concurrency",
+      "reason": "callId counter ensures stale async responses are discarded when newer load() calls are made"
+    },
+    {
+      "name": "Props/Emits Communication",
+      "reason": "CatalogList receives state via props and signals user actions via emits, keeping view layer decoupled from services/domain per design contract"
+    },
+    {
+      "name": "Error Normalization",
+      "reason": "error ref standardized to empty string for no-error states and nonempty string for failures, providing consistent truthy/falsy semantics for template conditionals"
+    }
+  ]
+}

@@ -1,0 +1,153 @@
+{
+  "schema": "codespider.design-review/v1",
+  "mode": "enforce",
+  "passed": true,
+  "blocking": false,
+  "complete": true,
+  "modules": [
+    {
+      "path": "src/App.vue",
+      "parser": "js-vue-lexical",
+      "symbols": [
+        {
+          "name": "App",
+          "kind": "component",
+          "line": 1
+        }
+      ],
+      "imports": [
+        "./components/CatalogList.vue",
+        "./composables/useCatalog.js",
+        "vue"
+      ],
+      "calls": [],
+      "package": "",
+      "layer": "view",
+      "fan_out": 2,
+      "fan_in": 1
+    },
+    {
+      "path": "src/components/CatalogList.vue",
+      "parser": "js-vue-lexical",
+      "symbols": [
+        {
+          "name": "CatalogList",
+          "kind": "component",
+          "line": 1
+        }
+      ],
+      "imports": [],
+      "calls": [],
+      "package": "",
+      "layer": "view",
+      "fan_out": 0,
+      "fan_in": 1
+    },
+    {
+      "path": "src/composables/useCatalog.js",
+      "parser": "js-vue-lexical",
+      "symbols": [
+        {
+          "name": "useCatalog",
+          "kind": "function",
+          "line": 9
+        },
+        {
+          "name": "load",
+          "kind": "function",
+          "line": 15
+        }
+      ],
+      "imports": [
+        "../services/catalogApi.js",
+        "vue"
+      ],
+      "calls": [],
+      "package": "",
+      "layer": "state",
+      "fan_out": 1,
+      "fan_in": 1
+    },
+    {
+      "path": "src/domain/pricing.js",
+      "parser": "js-vue-lexical",
+      "symbols": [
+        {
+          "name": "totalCents",
+          "kind": "function",
+          "line": 6
+        }
+      ],
+      "imports": [],
+      "calls": [],
+      "package": "",
+      "layer": "domain",
+      "fan_out": 0,
+      "fan_in": 0
+    },
+    {
+      "path": "src/main.js",
+      "parser": "js-vue-lexical",
+      "symbols": [],
+      "imports": [
+        "./App.vue",
+        "vue"
+      ],
+      "calls": [],
+      "package": "",
+      "layer": "composition",
+      "fan_out": 1,
+      "fan_in": 0
+    },
+    {
+      "path": "src/services/catalogApi.js",
+      "parser": "js-vue-lexical",
+      "symbols": [
+        {
+          "name": "fetchProducts",
+          "kind": "function",
+          "line": 11
+        }
+      ],
+      "imports": [],
+      "calls": [],
+      "package": "",
+      "layer": "api",
+      "fan_out": 0,
+      "fan_in": 1
+    }
+  ],
+  "dependencies": [
+    {
+      "from": "src/App.vue",
+      "to": "src/components/CatalogList.vue"
+    },
+    {
+      "from": "src/App.vue",
+      "to": "src/composables/useCatalog.js"
+    },
+    {
+      "from": "src/composables/useCatalog.js",
+      "to": "src/services/catalogApi.js"
+    },
+    {
+      "from": "src/main.js",
+      "to": "src/App.vue"
+    }
+  ],
+  "findings": [],
+  "metrics": {
+    "modules": 6,
+    "classes": 0,
+    "functions": 4,
+    "components": 2,
+    "dependencies": 4,
+    "errors": 0,
+    "warnings": 0
+  },
+  "limitations": [
+    "Python calls are syntactic, not runtime dispatch resolution.",
+    "Java/JS/Vue use lexical evidence, not full AST/type resolution; aliases, reflection and dynamic imports may be missed.",
+    "Metrics and import direction do not prove semantic cohesion or pattern correctness."
+  ]
+}

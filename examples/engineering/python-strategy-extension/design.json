@@ -1,0 +1,188 @@
+{
+  "modules": [
+    {
+      "path": "shop/ports.py",
+      "responsibility": "Define Inventory and Pricing Protocol abstractions that decouple service from implementations.",
+      "depends_on": []
+    },
+    {
+      "path": "shop/pricing.py",
+      "responsibility": "Domain layer: pricing strategies including RegularPricing, BulkPricing, and CappedPricing",
+      "depends_on": []
+    },
+    {
+      "path": "shop/repository.py",
+      "responsibility": "Provide MemoryInventory infrastructure adapter implementing the Inventory protocol with hardcoded catalog data.",
+      "depends_on": [
+        "shop/ports.py"
+      ]
+    },
+    {
+      "path": "shop/service.py",
+      "responsibility": "Orchestrate checkout quoting by validating inputs, delegating to injected Inventory and Pricing protocols without importing concrete classes.",
+      "depends_on": [
+        "shop/ports.py"
+      ]
+    },
+    {
+      "path": "main.py",
+      "responsibility": "Composition root that wires concrete implementations into CheckoutService and runs demonstration quotes.",
+      "depends_on": [
+        "shop/service.py",
+        "shop/pricing.py",
+        "shop/repository.py",
+        "shop/ports.py"
+      ]
+    },
+    {
+      "path": "tests/test_shop.py",
+      "responsibility": "Comprehensive unit and integration tests covering validation, collaborator mocking, boundary conditions, rounding, protocol conformance, and instance isolation.",
+      "depends_on": [
+        "shop/service.py",
+        "shop/pricing.py",
+        "shop/repository.py",
+        "shop/ports.py"
+      ]
+    },
+    {
+      "path": "tests/test_capped.py",
+      "responsibility": "Tests for CappedPricing domain logic, validation, isolation, protocol conformance, and service integration",
+      "depends_on": [
+        "shop/pricing.py",
+        "shop/service.py",
+        "shop/ports.py",
+        "shop/repository.py"
+      ]
+    }
+  ],
+  "interfaces": [
+    {
+      "path": "shop/ports.py",
+      "symbol": "Inventory.unit_price",
+      "inputs": {
+        "sku": "str"
+      },
+      "outputs": "int",
+      "errors": [
+        "KeyError"
+      ]
+    },
+    {
+      "path": "shop/ports.py",
+      "symbol": "Pricing.total",
+      "inputs": {
+        "unit_cents": "int",
+        "quantity": "int"
+      },
+      "outputs": "int",
+      "errors": [
+        "TypeError",
+        "ValueError"
+      ]
+    },
+    {
+      "path": "shop/service.py",
+      "symbol": "CheckoutService.__init__",
+      "inputs": {
+        "inventory": "Inventory",
+        "pricing": "Pricing"
+      },
+      "outputs": "None",
+      "errors": []
+    },
+    {
+      "path": "shop/service.py",
+      "symbol": "CheckoutService.quote",
+      "inputs": {
+        "sku": "str",
+        "quantity": "int"
+      },
+      "outputs": "int",
+      "errors": [
+        "TypeError",
+        "ValueError",
+        "KeyError"
+      ]
+    },
+    {
+      "path": "shop/pricing.py",
+      "symbol": "RegularPricing.total",
+      "inputs": {
+        "unit_cents": "int",
+        "quantity": "int"
+      },
+      "outputs": "int",
+      "errors": [
+        "TypeError",
+        "ValueError"
+      ]
+    },
+    {
+      "path": "shop/pricing.py",
+      "symbol": "BulkPricing.total",
+      "inputs": {
+        "unit_cents": "int",
+        "quantity": "int"
+      },
+      "outputs": "int",
+      "errors": [
+        "TypeError",
+        "ValueError"
+      ]
+    },
+    {
+      "path": "shop/repository.py",
+      "symbol": "MemoryInventory.unit_price",
+      "inputs": {
+        "sku": "str"
+      },
+      "outputs": "int",
+      "errors": [
+        "KeyError"
+      ]
+    },
+    {
+      "path": "shop/pricing.py",
+      "symbol": "CappedPricing.__init__",
+      "inputs": {
+        "cap_cents": "int"
+      },
+      "outputs": "None",
+      "errors": [
+        "TypeError: cap_cents is bool or not int",
+        "ValueError: cap_cents <= 0"
+      ]
+    },
+    {
+      "path": "shop/pricing.py",
+      "symbol": "CappedPricing.total",
+      "inputs": {
+        "unit_cents": "int",
+        "quantity": "int"
+      },
+      "outputs": "int",
+      "errors": [
+        "TypeError: unit_cents or quantity is bool or not int",
+        "ValueError: unit_cents < 0 or quantity <= 0"
+      ]
+    }
+  ],
+  "patterns": [
+    {
+      "name": "Strategy",
+      "reason": "CappedPricing is a new interchangeable pricing algorithm conforming to the Pricing protocol, selected at composition time without modifying CheckoutService."
+    },
+    {
+      "name": "Dependency Injection",
+      "reason": "CheckoutService receives Inventory and Pricing via constructor injection, depending only on Protocol abstractions rather than concrete classes."
+    },
+    {
+      "name": "Adapter",
+      "reason": "MemoryInventory adapts in-memory dictionary storage to the Inventory protocol interface expected by the service layer."
+    },
+    {
+      "name": "Repository",
+      "reason": "MemoryInventory encapsulates data access for product pricing, isolating persistence concerns from business logic."
+    }
+  ]
+}

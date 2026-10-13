@@ -1,0 +1,517 @@
+{
+  "schema": "codespider.design-review/v1",
+  "mode": "enforce",
+  "passed": true,
+  "blocking": false,
+  "complete": true,
+  "modules": [
+    {
+      "path": "main.py",
+      "parser": "python-ast",
+      "symbols": [
+        {
+          "name": "main",
+          "kind": "function",
+          "line": 6,
+          "lines": 16,
+          "parameters": 0,
+          "parameter_names": [],
+          "returns": "None"
+        }
+      ],
+      "imports": [
+        "shop.pricing",
+        "shop.pricing.BulkPricing",
+        "shop.pricing.RegularPricing",
+        "shop.repository",
+        "shop.repository.MemoryInventory",
+        "shop.service",
+        "shop.service.CheckoutService"
+      ],
+      "calls": [
+        {
+          "caller": "main",
+          "callee": "MemoryInventory",
+          "line": 8
+        },
+        {
+          "caller": "main",
+          "callee": "CheckoutService",
+          "line": 10
+        },
+        {
+          "caller": "main",
+          "callee": "RegularPricing",
+          "line": 10
+        },
+        {
+          "caller": "main",
+          "callee": "CheckoutService",
+          "line": 11
+        },
+        {
+          "caller": "main",
+          "callee": "BulkPricing",
+          "line": 11
+        },
+        {
+          "caller": "main",
+          "callee": "regular_service.quote",
+          "line": 16
+        },
+        {
+          "caller": "main",
+          "callee": "bulk_service.quote",
+          "line": 17
+        },
+        {
+          "caller": "main",
+          "callee": "print",
+          "line": 19
+        },
+        {
+          "caller": "main",
+          "callee": "print",
+          "line": 20
+        },
+        {
+          "caller": "main",
+          "callee": "print",
+          "line": 21
+        }
+      ],
+      "layer": "composition",
+      "fan_out": 3,
+      "fan_in": 0
+    },
+    {
+      "path": "shop/ports.py",
+      "parser": "python-ast",
+      "symbols": [
+        {
+          "name": "Inventory",
+          "kind": "class",
+          "line": 5,
+          "lines": 16,
+          "methods": 1,
+          "bases": [
+            "Protocol"
+          ]
+        },
+        {
+          "name": "Inventory.unit_price",
+          "kind": "function",
+          "line": 8,
+          "lines": 13,
+          "parameters": 1,
+          "parameter_names": [
+            "self",
+            "sku"
+          ],
+          "returns": "int"
+        },
+        {
+          "name": "Pricing",
+          "kind": "class",
+          "line": 24,
+          "lines": 18,
+          "methods": 1,
+          "bases": [
+            "Protocol"
+          ]
+        },
+        {
+          "name": "Pricing.total",
+          "kind": "function",
+          "line": 27,
+          "lines": 15,
+          "parameters": 2,
+          "parameter_names": [
+            "self",
+            "unit_cents",
+            "quantity"
+          ],
+          "returns": "int"
+        }
+      ],
+      "imports": [
+        "typing",
+        "typing.Protocol",
+        "typing.runtime_checkable"
+      ],
+      "calls": [],
+      "layer": "ports",
+      "fan_out": 0,
+      "fan_in": 1
+    },
+    {
+      "path": "shop/pricing.py",
+      "parser": "python-ast",
+      "symbols": [
+        {
+          "name": "_validate_inputs",
+          "kind": "function",
+          "line": 4,
+          "lines": 19,
+          "parameters": 2,
+          "parameter_names": [
+            "unit_cents",
+            "quantity"
+          ],
+          "returns": "None"
+        },
+        {
+          "name": "RegularPricing",
+          "kind": "class",
+          "line": 25,
+          "lines": 19,
+          "methods": 1,
+          "bases": []
+        },
+        {
+          "name": "RegularPricing.total",
+          "kind": "function",
+          "line": 28,
+          "lines": 16,
+          "parameters": 2,
+          "parameter_names": [
+            "self",
+            "unit_cents",
+            "quantity"
+          ],
+          "returns": "int"
+        },
+        {
+          "name": "BulkPricing",
+          "kind": "class",
+          "line": 46,
+          "lines": 24,
+          "methods": 1,
+          "bases": []
+        },
+        {
+          "name": "BulkPricing.total",
+          "kind": "function",
+          "line": 49,
+          "lines": 21,
+          "parameters": 2,
+          "parameter_names": [
+            "self",
+            "unit_cents",
+            "quantity"
+          ],
+          "returns": "int"
+        },
+        {
+          "name": "CappedPricing",
+          "kind": "class",
+          "line": 72,
+          "lines": 41,
+          "methods": 2,
+          "bases": []
+        },
+        {
+          "name": "CappedPricing.__init__",
+          "kind": "function",
+          "line": 78,
+          "lines": 16,
+          "parameters": 1,
+          "parameter_names": [
+            "self",
+            "cap_cents"
+          ],
+          "returns": "None"
+        },
+        {
+          "name": "CappedPricing.total",
+          "kind": "function",
+          "line": 95,
+          "lines": 18,
+          "parameters": 2,
+          "parameter_names": [
+            "self",
+            "unit_cents",
+            "quantity"
+          ],
+          "returns": "int"
+        }
+      ],
+      "imports": [
+        "decimal",
+        "decimal.Decimal",
+        "decimal.ROUND_HALF_UP"
+      ],
+      "calls": [
+        {
+          "caller": "_validate_inputs",
+          "callee": "isinstance",
+          "line": 15
+        },
+        {
+          "caller": "_validate_inputs",
+          "callee": "isinstance",
+          "line": 15
+        },
+        {
+          "caller": "_validate_inputs",
+          "callee": "TypeError",
+          "line": 16
+        },
+        {
+          "caller": "_validate_inputs",
+          "callee": "isinstance",
+          "line": 17
+        },
+        {
+          "caller": "_validate_inputs",
+          "callee": "isinstance",
+          "line": 17
+        },
+        {
+          "caller": "_validate_inputs",
+          "callee": "TypeError",
+          "line": 18
+        },
+        {
+          "caller": "_validate_inputs",
+          "callee": "ValueError",
+          "line": 20
+        },
+        {
+          "caller": "_validate_inputs",
+          "callee": "ValueError",
+          "line": 22
+        },
+        {
+          "caller": "RegularPricing.total",
+          "callee": "_validate_inputs",
+          "line": 42
+        },
+        {
+          "caller": "BulkPricing.total",
+          "callee": "_validate_inputs",
+          "line": 64
+        },
+        {
+          "caller": "BulkPricing.total",
+          "callee": "Decimal",
+          "line": 67
+        },
+        {
+          "caller": "BulkPricing.total",
+          "callee": "Decimal",
+          "line": 67
+        },
+        {
+          "caller": "BulkPricing.total",
+          "callee": "int",
+          "line": 68
+        },
+        {
+          "caller": "BulkPricing.total",
+          "callee": "discounted.quantize",
+          "line": 68
+        },
+        {
+          "caller": "BulkPricing.total",
+          "callee": "Decimal",
+          "line": 68
+        },
+        {
+          "caller": "CappedPricing.__init__",
+          "callee": "isinstance",
+          "line": 89
+        },
+        {
+          "caller": "CappedPricing.__init__",
+          "callee": "isinstance",
+          "line": 89
+        },
+        {
+          "caller": "CappedPricing.__init__",
+          "callee": "TypeError",
+          "line": 90
+        },
+        {
+          "caller": "CappedPricing.__init__",
+          "callee": "ValueError",
+          "line": 92
+        },
+        {
+          "caller": "CappedPricing.total",
+          "callee": "_validate_inputs",
+          "line": 110
+        },
+        {
+          "caller": "CappedPricing.total",
+          "callee": "min",
+          "line": 112
+        }
+      ],
+      "layer": "domain",
+      "fan_out": 0,
+      "fan_in": 1
+    },
+    {
+      "path": "shop/repository.py",
+      "parser": "python-ast",
+      "symbols": [
+        {
+          "name": "MemoryInventory",
+          "kind": "class",
+          "line": 1,
+          "lines": 23,
+          "methods": 2,
+          "bases": []
+        },
+        {
+          "name": "MemoryInventory.__init__",
+          "kind": "function",
+          "line": 4,
+          "lines": 4,
+          "parameters": 0,
+          "parameter_names": [
+            "self"
+          ],
+          "returns": "None"
+        },
+        {
+          "name": "MemoryInventory.unit_price",
+          "kind": "function",
+          "line": 9,
+          "lines": 15,
+          "parameters": 1,
+          "parameter_names": [
+            "self",
+            "sku"
+          ],
+          "returns": "int"
+        }
+      ],
+      "imports": [],
+      "calls": [
+        {
+          "caller": "MemoryInventory.unit_price",
+          "callee": "KeyError",
+          "line": 22
+        }
+      ],
+      "layer": "infrastructure",
+      "fan_out": 0,
+      "fan_in": 1
+    },
+    {
+      "path": "shop/service.py",
+      "parser": "python-ast",
+      "symbols": [
+        {
+          "name": "CheckoutService",
+          "kind": "class",
+          "line": 4,
+          "lines": 43,
+          "methods": 2,
+          "bases": []
+        },
+        {
+          "name": "CheckoutService.__init__",
+          "kind": "function",
+          "line": 11,
+          "lines": 9,
+          "parameters": 2,
+          "parameter_names": [
+            "self",
+            "inventory",
+            "pricing"
+          ],
+          "returns": "None"
+        },
+        {
+          "name": "CheckoutService.quote",
+          "kind": "function",
+          "line": 21,
+          "lines": 26,
+          "parameters": 2,
+          "parameter_names": [
+            "self",
+            "sku",
+            "quantity"
+          ],
+          "returns": "int"
+        }
+      ],
+      "imports": [
+        "shop.ports",
+        "shop.ports.Inventory",
+        "shop.ports.Pricing"
+      ],
+      "calls": [
+        {
+          "caller": "CheckoutService.quote",
+          "callee": "isinstance",
+          "line": 40
+        },
+        {
+          "caller": "CheckoutService.quote",
+          "callee": "isinstance",
+          "line": 40
+        },
+        {
+          "caller": "CheckoutService.quote",
+          "callee": "TypeError",
+          "line": 41
+        },
+        {
+          "caller": "CheckoutService.quote",
+          "callee": "ValueError",
+          "line": 43
+        },
+        {
+          "caller": "CheckoutService.quote",
+          "callee": "self._inventory.unit_price",
+          "line": 45
+        },
+        {
+          "caller": "CheckoutService.quote",
+          "callee": "self._pricing.total",
+          "line": 46
+        }
+      ],
+      "layer": "service",
+      "fan_out": 1,
+      "fan_in": 1
+    }
+  ],
+  "dependencies": [
+    {
+      "from": "main.py",
+      "to": "shop/pricing.py"
+    },
+    {
+      "from": "main.py",
+      "to": "shop/repository.py"
+    },
+    {
+      "from": "main.py",
+      "to": "shop/service.py"
+    },
+    {
+      "from": "shop/service.py",
+      "to": "shop/ports.py"
+    }
+  ],
+  "findings": [],
+  "metrics": {
+    "modules": 5,
+    "classes": 7,
+    "functions": 12,
+    "components": 0,
+    "dependencies": 4,
+    "errors": 0,
+    "warnings": 0
+  },
+  "limitations": [
+    "Python calls are syntactic, not runtime dispatch resolution.",
+    "Java/JS/Vue use lexical evidence, not full AST/type resolution; aliases, reflection and dynamic imports may be missed.",
+    "Metrics and import direction do not prove semantic cohesion or pattern correctness."
+  ]
+}

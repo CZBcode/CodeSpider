@@ -1,0 +1,54 @@
+{
+  "schema": "codespider.design/v1",
+  "mode": "enforce",
+  "require_design": true,
+  "require_layer_assignment": true,
+  "layers": [
+    {
+      "name": "service",
+      "paths": [
+        "shop/service.py"
+      ],
+      "may_depend_on": [
+        "domain",
+        "ports"
+      ]
+    },
+    {
+      "name": "domain",
+      "paths": [
+        "shop/pricing.py"
+      ],
+      "may_depend_on": []
+    },
+    {
+      "name": "ports",
+      "paths": [
+        "shop/ports.py"
+      ],
+      "may_depend_on": []
+    },
+    {
+      "name": "infrastructure",
+      "paths": [
+        "shop/repository.py"
+      ],
+      "may_depend_on": [
+        "ports"
+      ]
+    },
+    {
+      "name": "composition",
+      "paths": [
+        "shop/__init__.py",
+        "main.py"
+      ],
+      "may_depend_on": [
+        "service",
+        "domain",
+        "ports",
+        "infrastructure"
+      ]
+    }
+  ]
+}

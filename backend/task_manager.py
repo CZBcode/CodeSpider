@@ -68,6 +68,9 @@ class TaskManager:
         if on_model_call:
             on_model_call()
         task = Task(new_id("task"), workspace_id, goal.strip(), plan=turn["steps"], patches=patches or turn.get("patches", []), thinking=turn["thinking"], tool_calls=turn.get("tool_calls", []), response_schema=turn.get("schema", "agent.turn/v1"), model_id=model_id)
+        task.design = turn.get("design", {})
+        task.design_contract = context.get("design_contract", {})
+        task.design_review = turn.get("design_review", {})
         task.workspace_snapshot = workspace.to_dict()
         self._save_task(task)
         self._emit(task.id, "task.created", {"goal": task.goal})
@@ -136,6 +139,7 @@ class TaskManager:
             if task_id in self._cancelled:
                 return
             if task.patches:
+                self._review_design(task, proposed=True)
                 for patch in task.patches:
                     operation = patch.get("operation", "apply_patch" if "expected" in patch else "write_file")
                     if operation == "apply_patch":
@@ -167,6 +171,8 @@ class TaskManager:
                     raise ExecutionError("verification failed (exit code %s): %s" % (result.data.get("exit_code"), command))
                 if "unittest discover" in command and "Ran 0 tests" in result.data.get("output", ""):
                     raise ExecutionError("发现测试目录但没有执行任何 unittest 测试，请检查测试框架和发现配置")
+            if task.patches:
+                self._review_design(task)
             self._emit(task_id, "verification.completed", {"commands": list(dict.fromkeys(commands))})
             completion_message = "文件修改已完成，验证命令通过。" if task.patches else "分析与验证已完成，未修改文件。"
             if commands == ["python3 -m compileall -q ."]:
@@ -188,6 +194,17 @@ class TaskManager:
                 task.updated_at = now_iso()
                 self._save_task(task)
                 self._emit(task_id, "task.failed", {"error": str(exc)})
+
+    def _review_design(self, task, proposed=False):
+        result = self._call_tool(task.id, ToolRequest("code", "design_review",
+            {"patches": task.patches if proposed else [], "design": task.design or None,
+             "design_contract": task.design_contract, "check_design": bool(task.design_contract)},
+            workspace_id=task.workspace_id, task_id=task.id,
+            approval={"approved": True, "source": "task_approval"}))
+        task.design_review = result.data
+        self._emit(task.id, "design.reviewed", dict(result.data, phase="before_write" if proposed else "after_tests"))
+        if result.data.get("blocking"):
+            raise ExecutionError("Design contract failed; see structure review findings")
 
     def _call_tool(self, task_id: str, request: ToolRequest):
         if self.tools is None:

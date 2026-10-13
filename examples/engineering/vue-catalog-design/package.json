@@ -1,0 +1,20 @@
+{
+  "name": "vue-counter",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "build": "vite build",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "vue": "3.4.21"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "5.0.4",
+    "@vue/test-utils": "2.4.6",
+    "jsdom": "25.0.1",
+    "vite": "5.4.14",
+    "vitest": "2.1.8"
+  }
+}

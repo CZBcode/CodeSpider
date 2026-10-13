@@ -1,0 +1,313 @@
+{
+  "schema": "codespider.design-review/v1",
+  "mode": "enforce",
+  "passed": true,
+  "blocking": false,
+  "complete": true,
+  "modules": [
+    {
+      "path": "src/main/java/example/Application.java",
+      "parser": "java-lexical",
+      "symbols": [
+        {
+          "name": "Application",
+          "kind": "class",
+          "line": 13
+        },
+        {
+          "name": "main",
+          "kind": "method",
+          "line": 15,
+          "qualified_name": "Application.main"
+        },
+        {
+          "name": "productRepository",
+          "kind": "method",
+          "line": 20,
+          "qualified_name": "Application.productRepository"
+        },
+        {
+          "name": "pricingPolicy",
+          "kind": "method",
+          "line": 25,
+          "qualified_name": "Application.pricingPolicy"
+        },
+        {
+          "name": "quoteService",
+          "kind": "method",
+          "line": 30,
+          "qualified_name": "Application.quoteService"
+        }
+      ],
+      "imports": [
+        "example.domain.BulkPricing",
+        "example.domain.PricingPolicy",
+        "example.repository.InMemoryProductRepository",
+        "example.repository.ProductRepository",
+        "example.service.QuoteService",
+        "org.springframework.boot.SpringApplication",
+        "org.springframework.boot.autoconfigure.SpringBootApplication",
+        "org.springframework.context.annotation.Bean"
+      ],
+      "calls": [],
+      "package": "example",
+      "layer": "composition",
+      "fan_out": 5,
+      "fan_in": 0
+    },
+    {
+      "path": "src/main/java/example/domain/BulkPricing.java",
+      "parser": "java-lexical",
+      "symbols": [
+        {
+          "name": "BulkPricing",
+          "kind": "class",
+          "line": 3
+        },
+        {
+          "name": "total",
+          "kind": "method",
+          "line": 6,
+          "qualified_name": "BulkPricing.total"
+        }
+      ],
+      "imports": [],
+      "calls": [],
+      "package": "example.domain",
+      "layer": "domain",
+      "fan_out": 1,
+      "fan_in": 1
+    },
+    {
+      "path": "src/main/java/example/domain/PricingPolicy.java",
+      "parser": "java-lexical",
+      "symbols": [
+        {
+          "name": "PricingPolicy",
+          "kind": "class",
+          "line": 3
+        },
+        {
+          "name": "total",
+          "kind": "method",
+          "line": 4,
+          "qualified_name": "PricingPolicy.total"
+        }
+      ],
+      "imports": [],
+      "calls": [],
+      "package": "example.domain",
+      "layer": "domain",
+      "fan_out": 0,
+      "fan_in": 3
+    },
+    {
+      "path": "src/main/java/example/repository/InMemoryProductRepository.java",
+      "parser": "java-lexical",
+      "symbols": [
+        {
+          "name": "InMemoryProductRepository",
+          "kind": "class",
+          "line": 5
+        },
+        {
+          "name": "unitPrice",
+          "kind": "method",
+          "line": 8,
+          "qualified_name": "InMemoryProductRepository.unitPrice"
+        }
+      ],
+      "imports": [
+        "java.util.NoSuchElementException"
+      ],
+      "calls": [],
+      "package": "example.repository",
+      "layer": "repository",
+      "fan_out": 1,
+      "fan_in": 1
+    },
+    {
+      "path": "src/main/java/example/repository/ProductRepository.java",
+      "parser": "java-lexical",
+      "symbols": [
+        {
+          "name": "ProductRepository",
+          "kind": "class",
+          "line": 3
+        },
+        {
+          "name": "unitPrice",
+          "kind": "method",
+          "line": 4,
+          "qualified_name": "ProductRepository.unitPrice"
+        }
+      ],
+      "imports": [],
+      "calls": [],
+      "package": "example.repository",
+      "layer": "repository",
+      "fan_out": 0,
+      "fan_in": 3
+    },
+    {
+      "path": "src/main/java/example/service/QuoteService.java",
+      "parser": "java-lexical",
+      "symbols": [
+        {
+          "name": "QuoteService",
+          "kind": "class",
+          "line": 6
+        },
+        {
+          "name": "QuoteService",
+          "kind": "method",
+          "line": 11,
+          "qualified_name": "QuoteService.QuoteService"
+        },
+        {
+          "name": "quote",
+          "kind": "method",
+          "line": 16,
+          "qualified_name": "QuoteService.quote"
+        }
+      ],
+      "imports": [
+        "example.domain.PricingPolicy",
+        "example.repository.ProductRepository"
+      ],
+      "calls": [],
+      "package": "example.service",
+      "layer": "service",
+      "fan_out": 2,
+      "fan_in": 2
+    },
+    {
+      "path": "src/main/java/example/web/GlobalExceptionHandler.java",
+      "parser": "java-lexical",
+      "symbols": [
+        {
+          "name": "GlobalExceptionHandler",
+          "kind": "class",
+          "line": 12
+        },
+        {
+          "name": "handleIllegalArgument",
+          "kind": "method",
+          "line": 15,
+          "qualified_name": "GlobalExceptionHandler.handleIllegalArgument"
+        },
+        {
+          "name": "handleNotFound",
+          "kind": "method",
+          "line": 21,
+          "qualified_name": "GlobalExceptionHandler.handleNotFound"
+        }
+      ],
+      "imports": [
+        "java.util.Map",
+        "java.util.NoSuchElementException",
+        "org.springframework.http.HttpStatus",
+        "org.springframework.http.ResponseEntity",
+        "org.springframework.web.bind.annotation.ExceptionHandler",
+        "org.springframework.web.bind.annotation.RestControllerAdvice"
+      ],
+      "calls": [],
+      "package": "example.web",
+      "layer": "web",
+      "fan_out": 0,
+      "fan_in": 0
+    },
+    {
+      "path": "src/main/java/example/web/QuoteController.java",
+      "parser": "java-lexical",
+      "symbols": [
+        {
+          "name": "QuoteController",
+          "kind": "class",
+          "line": 11
+        },
+        {
+          "name": "QuoteController",
+          "kind": "method",
+          "line": 15,
+          "qualified_name": "QuoteController.QuoteController"
+        },
+        {
+          "name": "getQuote",
+          "kind": "method",
+          "line": 20,
+          "qualified_name": "QuoteController.getQuote"
+        }
+      ],
+      "imports": [
+        "example.service.QuoteService",
+        "java.util.Map",
+        "org.springframework.web.bind.annotation.GetMapping",
+        "org.springframework.web.bind.annotation.RequestParam",
+        "org.springframework.web.bind.annotation.RestController"
+      ],
+      "calls": [],
+      "package": "example.web",
+      "layer": "web",
+      "fan_out": 1,
+      "fan_in": 0
+    }
+  ],
+  "dependencies": [
+    {
+      "from": "src/main/java/example/Application.java",
+      "to": "src/main/java/example/domain/BulkPricing.java"
+    },
+    {
+      "from": "src/main/java/example/Application.java",
+      "to": "src/main/java/example/domain/PricingPolicy.java"
+    },
+    {
+      "from": "src/main/java/example/Application.java",
+      "to": "src/main/java/example/repository/InMemoryProductRepository.java"
+    },
+    {
+      "from": "src/main/java/example/Application.java",
+      "to": "src/main/java/example/repository/ProductRepository.java"
+    },
+    {
+      "from": "src/main/java/example/Application.java",
+      "to": "src/main/java/example/service/QuoteService.java"
+    },
+    {
+      "from": "src/main/java/example/domain/BulkPricing.java",
+      "to": "src/main/java/example/domain/PricingPolicy.java"
+    },
+    {
+      "from": "src/main/java/example/repository/InMemoryProductRepository.java",
+      "to": "src/main/java/example/repository/ProductRepository.java"
+    },
+    {
+      "from": "src/main/java/example/service/QuoteService.java",
+      "to": "src/main/java/example/domain/PricingPolicy.java"
+    },
+    {
+      "from": "src/main/java/example/service/QuoteService.java",
+      "to": "src/main/java/example/repository/ProductRepository.java"
+    },
+    {
+      "from": "src/main/java/example/web/QuoteController.java",
+      "to": "src/main/java/example/service/QuoteService.java"
+    }
+  ],
+  "findings": [],
+  "metrics": {
+    "modules": 8,
+    "classes": 8,
+    "functions": 14,
+    "components": 0,
+    "dependencies": 10,
+    "errors": 0,
+    "warnings": 0
+  },
+  "limitations": [
+    "Python calls are syntactic, not runtime dispatch resolution.",
+    "Java/JS/Vue use lexical evidence, not full AST/type resolution; aliases, reflection and dynamic imports may be missed.",
+    "Metrics and import direction do not prove semantic cohesion or pattern correctness."
+  ]
+}

@@ -44,6 +44,9 @@ class Task:
     error: Optional[str] = None
     workspace_snapshot: Dict[str, Any] = field(default_factory=dict)
     model_id: str = ""
+    design: Dict[str, Any] = field(default_factory=dict)
+    design_contract: Dict[str, Any] = field(default_factory=dict)
+    design_review: Dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)

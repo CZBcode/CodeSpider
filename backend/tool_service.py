@@ -2,6 +2,7 @@ from typing import Any, Dict
 import threading
 from pathlib import PurePosixPath
 import re
+import hashlib
 
 from agent_client.executor import AgentExecutor, ExecutionError
 from agent_client.processes import ProcessManager
@@ -9,6 +10,9 @@ from backend.documents import generate_workspace_document
 from backend.policy import ApprovalRequired, PolicyError
 from backend.tool_protocol import ToolRequest, ToolResponse
 from code_intelligence.indexer import CodeIndexer
+from code_intelligence.design_contract import CONTRACT_FILE, load_contract, review_proposal
+from code_intelligence.structure import SOURCE_SUFFIXES, review_structure, summarize_structure
+from fnmatch import fnmatch
 from memory.service import MemoryService
 
 
@@ -62,7 +66,7 @@ class ToolService:
             "api_version": "1.0",
             "tools": [
                 {"tool": "workspace", "actions": ["list_tree", "read_file", "search", "write_file", "create_file", "apply_patch"]},
-                {"tool": "code", "actions": ["index", "symbols", "detect", "context"]},
+                {"tool": "code", "actions": ["index", "symbols", "detect", "context", "design_review"]},
                 {"tool": "process", "actions": ["run", "start", "list", "stop", "cancel"]},
                 {"tool": "memory", "actions": ["search", "project", "preference", "skill"]},
                 {"tool": "document", "actions": ["generate"]},
@@ -113,6 +117,29 @@ class ToolService:
             self.workspaces.refresh_type(request.workspace_id, request.task_id)
             return {"project_type": detected["type"], "verification_commands": detected.get("verification_commands", []),
                     "setup_commands": detected.get("setup_commands", [])}
+        if request.action == "design_review":
+            context = self._context(request, workspace, review=True)
+            expected = request.arguments.get("design_contract")
+            if expected and expected != context["design_contract"]:
+                raise ValueError("Design contract changed; regenerate the task")
+            patches = request.arguments.get("patches", [])
+            if patches:
+                from backend.patch_contract import PatchContract
+                normalized = PatchContract._patches(patches)
+                if len({p['path'] for p in normalized}) != len(normalized):
+                    raise ValueError("Duplicate patch paths are not allowed")
+                for patch in normalized:
+                    PatchContract._validate_patch(patch)
+                    if "base_sha256" in patch:
+                        content = context["files"].get(patch["path"])
+                        if content is None or hashlib.sha256(content.encode("utf-8")).hexdigest() != patch["base_sha256"]:
+                            raise ValueError("Source hash changed; regenerate: " + patch["path"])
+                        if "expected" not in patch: patch["expected"] = content
+                    if patch["operation"] == "apply_patch" and context["files"].get(patch["path"]) != patch.get("expected"):
+                        raise ValueError("Source changed; regenerate: " + patch["path"])
+                return review_proposal(context, normalized, request.arguments.get("design"),
+                                       check_design=bool(request.arguments.get("check_design")), raise_on_block=False)
+            return review_structure(context["files"], context["design_contract"], context["structure_incomplete"])
         if request.action == "context":
             return self._context(request, workspace)
         if request.action == "index":
@@ -122,7 +149,7 @@ class ToolService:
             return {"items": self.workspaces.symbols(request.workspace_id, request.task_id)}
         raise ValueError("unsupported code action")
 
-    def _context(self, request, workspace):
+    def _context(self, request, workspace, review=False):
         policy = self.workspaces.policy(request.workspace_id, request.task_id)
         executor = AgentExecutor(policy)
         paths = [item["path"] for item in self.workspaces.tree(workspace.id, 1000, request.task_id)]
@@ -134,10 +161,10 @@ class ToolService:
             if any(word in p.name.lower() for word in ("secret", "credential", "token", "password")):
                 return False
             return p.suffix in (".py", ".java", ".vue", ".js", ".ts", ".json", ".xml", ".toml", ".md", ".html", ".css") or p.name == "requirements.txt"
-        candidates = sorted((p for p in paths if allowed(p)), key=lambda p: (-sum(t in p.lower() for t in terms), p))
-        files, skipped, budget = {}, [], 96_000
+        candidates = sorted((p for p in paths if allowed(p)), key=lambda p: (p != CONTRACT_FILE, -sum(t in p.lower() for t in terms), p))
+        files, skipped, budget = {}, [], (512_000 if review else 96_000)
         for path in candidates:
-            if len(files) >= 24:
+            if len(files) >= (120 if review else 24):
                 skipped.append(path)
                 continue
             try:
@@ -147,6 +174,12 @@ class ToolService:
                 continue
             files[path] = content
             budget -= len(content.encode("utf-8"))
+        if CONTRACT_FILE in paths and CONTRACT_FILE not in files:
+            raise ValueError("Cannot read design-contract.json within source budget")
+        contract = load_contract(files)
+        structure_incomplete = len(paths) >= 1000 or any(
+            p.endswith(SOURCE_SUFFIXES) and not any(fnmatch(p, pattern) for pattern in contract["exclude"])
+            for p in paths if p not in files)
         # Index only the selected context files; do not send unrelated symbols.
         indexer = CodeIndexer(workspace.root, policy)
         symbols = []
@@ -157,7 +190,10 @@ class ToolService:
                 symbols.extend(indexer._regex(path, path, "java" if path.endswith(".java") else "vue"))
         return {"project_type": workspace.project_type, "description": workspace.description,
                 "files": files, "file_paths": paths, "symbols": symbols[:120], "skipped_files": skipped,
-                "context_limited": bool(skipped) or len(paths) >= 1000}
+                "file_hashes": {path: hashlib.sha256(content.encode("utf-8")).hexdigest() for path, content in files.items()},
+                "context_limited": bool(skipped) or len(paths) >= 1000,
+                "design_contract": contract, "structure_incomplete": structure_incomplete,
+                "structure": summarize_structure(review_structure(files, contract, structure_incomplete)) if not review else {}}
 
     def _process(self, request: ToolRequest, cancel_event=None) -> Dict[str, Any]:
         if request.action == "stop":
