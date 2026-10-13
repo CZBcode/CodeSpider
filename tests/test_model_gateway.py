@@ -100,6 +100,12 @@ class ModelGatewayTests(unittest.TestCase):
             with self.assertRaises(ModelRequestError):
                 ModelGateway().plan("Generate code", {}, settings_override=settings)
 
+    def test_system_prompt_requires_exact_contract_review_for_framework_apis(self):
+        prompt = ModelGateway._system_prompt()
+        self.assertIn("requirements checklist", prompt)
+        self.assertIn("org.springframework.boot.test.mock.mockito.MockBean", prompt)
+        self.assertIn("empty string versus null", prompt)
+
     def test_normalizes_string_response_wrapper_and_schema_alias(self):
         wrapped = {"response": json.dumps({
             "type": "agent.turn/v1", "summary": "wrapped", "thinking": ["read"],

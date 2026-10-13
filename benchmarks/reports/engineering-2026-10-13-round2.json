@@ -1,0 +1,44 @@
+{
+  "model": "qwen3.8-max",
+  "evaluation": "engineering-generation-v2",
+  "date": "2026-10-13",
+  "initial": {
+    "cases": 4,
+    "passed": 2,
+    "failed": [
+      "spring-mvc-design",
+      "vue-catalog-design"
+    ]
+  },
+  "repairs": [
+    {
+      "id": "spring-mvc-design",
+      "passed": true,
+      "model_responses": 2,
+      "patch_count": 1,
+      "acceptance_exit_code": 0,
+      "seconds": 64.24
+    },
+    {
+      "id": "vue-catalog-design",
+      "passed": true,
+      "model_responses": 1,
+      "patch_count": 3,
+      "acceptance_exit_code": 0,
+      "seconds": 48.13
+    }
+  ],
+  "final_passed": 4,
+  "final_total": 4,
+  "cases": [
+    "python-checkout-design",
+    "spring-mvc-design",
+    "vue-catalog-design",
+    "python-strategy-extension"
+  ],
+  "failure_feedback": {
+    "spring-mvc-design": "Spring Boot test mock import was hallucinated; repair used org.springframework.boot.test.mock.mockito.MockBean and removed duplicate test beans.",
+    "vue-catalog-design": "Error state used null and error element lacked required data-testid; repair restored exact empty-string state and selectors."
+  },
+  "optimization": "Added an exact requirements checklist to the model contract prompt, framework API/version verification guidance, Spring Boot MockBean package guidance, and exact Vue data-testid/error-state guidance."
+}

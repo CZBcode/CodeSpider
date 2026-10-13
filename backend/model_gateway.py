@@ -294,7 +294,10 @@ class ModelGateway:
                 "context.file_hashes[path] into base_sha256 (omit expected), plus the FULL updated file in replacement. "
                 "Alternatively expected must be the FULL exact original file including trailing newlines. Never edit unseen files. New files use create. "
                 "An empty context.files is a valid new project: create its files. Do not return only a plan. "
+                "Before returning, perform a requirements checklist against every explicit file path, public symbol, package/import, HTTP status, JSON key, UI data-testid, error value, build script and test command in the user request. Exact names and values are part of the contract; do not substitute approximate behavior. "
                 "Use concise summaries so the JSON is complete before the token limit.")
+        prompt += ("\nFor Spring Boot projects, use only APIs and imports present in the supplied pom and verify test-slice configuration does not define duplicate beans; in Spring Boot 3.x the Mockito test mock annotation is org.springframework.boot.test.mock.mockito.MockBean. "
+                    "For Vue projects, preserve every requested data-testid and represent requested initial/error states with the exact values, including empty string versus null. ")
         if not minimal:
             prompt += "\n" + DESIGN_GUIDANCE
         if minimal:
