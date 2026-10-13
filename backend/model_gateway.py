@@ -237,6 +237,34 @@ class ModelGateway:
             return self._remote_plan(goal, context, settings)
         return self.validate_turn({"schema": SCHEMA, "summary": "当前使用本地演示模型，只能分析和验证工程，不会生成代码。请在模型设置中选择已配置的大模型。", "thinking": [{"id": "understand", "title": "理解需求", "summary": "识别用户目标、工程范围和需要验证的结果", "status": "pending"}, {"id": "plan", "title": "制定步骤", "summary": "按工程类型定位代码、执行变更并运行验证", "status": "pending"}], "steps": [{"step": 1, "title": "理解工作区", "action": "code.index", "detail": "读取工程类型、文件和相关符号"}, {"step": 2, "title": "执行用户目标", "action": "workspace.apply_patch", "detail": goal}, {"step": 3, "title": "验证结果", "action": "process.run", "detail": "根据工程类型运行测试或检查命令"}], "tool_calls": [], "patches": []})
 
+    def chat(self, message: str, history: List[Dict[str, Any]] = None, settings_override: Dict[str, Any] = None) -> str:
+        """Answer a general conversation without the code-generation contract."""
+        settings = dict(settings_override or (self.settings._raw() if self.settings and hasattr(self.settings, "_raw") else {}))
+        if settings.get("provider") not in ("local", "", None):
+            if not settings.get("base_url") or not settings.get("api_key"):
+                raise ModelRequestError("所选模型缺少服务地址或 API Key，请在模型设置中补全配置")
+            endpoint = str(settings.get("base_url", "")).rstrip("/")
+            endpoint = endpoint if endpoint.endswith("/chat/completions") else endpoint + "/chat/completions"
+            messages = [{"role": "system", "content": "你是 CodeSpider 的通用编程与产品助手。直接回答用户问题，使用中文，必要时给出代码示例。不要声称执行了本地工具或修改了工程。"}]
+            for item in (history or [])[-12:]:
+                role = "assistant" if item.get("reply") else "user"
+                content = item.get("reply") or item.get("goal") or ""
+                if content:
+                    messages.append({"role": role, "content": str(content)[:12000]})
+            messages.append({"role": "user", "content": message})
+            raw = self._request_chat_completion(endpoint, settings, messages)
+            try:
+                payload = json.loads(raw)
+                content = payload["choices"][0]["message"].get("content", "")
+            except (KeyError, IndexError, TypeError, json.JSONDecodeError) as exc:
+                raise ModelContractError("provider response is not a chat completion: %s" % exc)
+            if isinstance(content, list):
+                content = "".join(str(item.get("text", "")) if isinstance(item, dict) else str(item) for item in content)
+            if not isinstance(content, str) or not content.strip():
+                raise ModelContractError("provider message content is empty")
+            return content.strip()[:16000]
+        return "已收到你的消息：\n\n%s\n\n当前使用本地演示模型。你可以继续提问；如果要读取、修改或运行工程，请切换到具体项目。" % message[:12000]
+
     def _remote_plan(self, goal: str, context: Dict[str, Any], settings: Dict[str, Any]) -> Dict[str, Any]:
         base_url = str(settings.get("base_url", "")).rstrip("/")
         endpoint = base_url if base_url.endswith("/chat/completions") else base_url + "/chat/completions"
@@ -308,6 +336,26 @@ class ModelGateway:
     @staticmethod
     def _request_completion(endpoint: str, settings: Dict[str, Any], system: str, user: str, max_tokens: Any = None) -> str:
         payload = {"model": settings.get("model", ""), "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}], "temperature": float(settings.get("temperature", 0.2)), "max_tokens": int(max_tokens or settings.get("max_tokens", 4096)), "response_format": {"type": "json_object"}, "enable_thinking": False}
+        req = urlrequest.Request(endpoint, data=json.dumps(payload, ensure_ascii=False).encode("utf-8"), headers={"Content-Type": "application/json", "Accept": "application/json", "Authorization": "Bearer " + str(settings["api_key"])}, method="POST")
+        timeout = max(5, min(180, int(os.environ.get("CODESPIDER_MODEL_TIMEOUT", "90"))))
+        acquired = _REMOTE_SEMAPHORE.acquire(timeout=min(timeout, 30))
+        if not acquired:
+            raise ModelRequestError("model concurrency limit reached", True)
+        try:
+            with urlrequest.urlopen(req, timeout=timeout) as response:
+                return response.read(MAX_RESPONSE_BYTES).decode("utf-8")
+        except urlerror.HTTPError as exc:
+            raise ModelRequestError("model API returned HTTP %s" % exc.code, exc.code == 429 or exc.code >= 500)
+        except (urlerror.URLError, TimeoutError, OSError) as exc:
+            raise ModelRequestError("model API request failed: %s" % exc, True)
+        finally:
+            _REMOTE_SEMAPHORE.release()
+
+    @staticmethod
+    def _request_chat_completion(endpoint: str, settings: Dict[str, Any], messages: List[Dict[str, str]]) -> str:
+        payload = {"model": settings.get("model", ""), "messages": messages,
+                   "temperature": float(settings.get("temperature", 0.2)),
+                   "max_tokens": int(settings.get("max_tokens", 4096)), "enable_thinking": False}
         req = urlrequest.Request(endpoint, data=json.dumps(payload, ensure_ascii=False).encode("utf-8"), headers={"Content-Type": "application/json", "Accept": "application/json", "Authorization": "Bearer " + str(settings["api_key"])}, method="POST")
         timeout = max(5, min(180, int(os.environ.get("CODESPIDER_MODEL_TIMEOUT", "90"))))
         acquired = _REMOTE_SEMAPHORE.acquire(timeout=min(timeout, 30))

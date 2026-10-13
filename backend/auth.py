@@ -9,6 +9,8 @@ from backend.models import new_id, now_iso
 
 
 SESSION_DAYS = 14
+INITIAL_BALANCE = 500
+DAILY_CHECKIN_REWARD = 10
 
 
 def _password_hash(password: str, salt: bytes = None) -> str:
@@ -43,6 +45,7 @@ class AuthService:
         self.store.update("models", [], lambda models: models)
         self.store.update("user_models", [], lambda items: items)
         self.store.update("usage", [], lambda items: items)
+        self.store.update("checkins", [], lambda items: items)
         if not self.store.read("models", []):
             self.store.append("models", {"id": "mdl_local", "name": "本地确定性模型", "provider": "local", "model": "deterministic-mvp", "base_url": "", "api_key": "", "enabled": True, "created_at": now_iso()})
 
@@ -54,7 +57,7 @@ class AuthService:
         if len(password) < 8 or len(password) > 256:
             raise ValueError("密码长度需为 8-256 位")
         user = {"id": new_id("usr"), "username": username, "password_hash": _password_hash(password),
-                "role": "USER", "balance": 10,
+                "role": "USER", "balance": INITIAL_BALANCE,
                 "created_at": now_iso(), "active": True}
         def add(users):
             if any(item["username"].lower() == username.lower() for item in users):
@@ -233,3 +236,38 @@ class AuthService:
         updated = self.store.update("users", [], update)
         user = next(item for item in updated if item["id"] == user_id)
         return self.public_user(user)
+
+    @staticmethod
+    def _utc_date() -> str:
+        return datetime.now(timezone.utc).date().isoformat()
+
+    def checkin_status(self, user_id: str) -> Dict[str, Any]:
+        today = self._utc_date()
+        record = next((item for item in self.store.read("checkins", [])
+                       if item.get("user_id") == user_id and item.get("date") == today), None)
+        user = next((item for item in self.store.read("users", []) if item.get("id") == user_id), None)
+        if not user:
+            raise ValueError("用户不存在")
+        return {"date": today, "claimed": bool(record), "reward": DAILY_CHECKIN_REWARD,
+                "balance": int(user.get("balance", 0))}
+
+    def checkin(self, user_id: str) -> Dict[str, Any]:
+        today = self._utc_date()
+        with self.store._write_lock():
+            users = self.store.read("users", [])
+            user = next((item for item in users if item.get("id") == user_id), None)
+            if not user:
+                raise ValueError("用户不存在")
+            checkins = self.store.read("checkins", [])
+            if any(item.get("user_id") == user_id and item.get("date") == today for item in checkins):
+                return {"date": today, "claimed": True, "reward": DAILY_CHECKIN_REWARD,
+                        "balance": int(user.get("balance", 0)), "already_claimed": True}
+            updated_user = dict(user, balance=int(user.get("balance", 0)) + DAILY_CHECKIN_REWARD)
+            updated_users = [updated_user if item.get("id") == user_id else item for item in users]
+            record = {"id": new_id("checkin"), "user_id": user_id, "date": today,
+                      "amount": DAILY_CHECKIN_REWARD, "created_at": now_iso()}
+            write = self.store._request if hasattr(self.store, "_request") else self.store._write
+            write("PUT", "users", updated_users) if hasattr(self.store, "_request") else write("users", updated_users)
+            write("PUT", "checkins", checkins + [record]) if hasattr(self.store, "_request") else write("checkins", checkins + [record])
+            return {"date": today, "claimed": True, "reward": DAILY_CHECKIN_REWARD,
+                    "balance": int(updated_user["balance"]), "already_claimed": False}

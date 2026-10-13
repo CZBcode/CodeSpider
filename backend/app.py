@@ -1,10 +1,13 @@
 import argparse
+import io
 import json
 import mimetypes
 import os
+import re
 import sys
 import signal
 import threading
+import zipfile
 from http import cookies
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -122,6 +125,33 @@ class Handler(BaseHTTPRequestHandler):
             raise ValueError("JSON body must be an object")
         return value
 
+    def _download_workspace(self, workspace_id: str) -> None:
+        workspace = self.context.workspaces.get(workspace_id)
+        root = os.path.realpath(workspace.root)
+        output = io.BytesIO()
+        total = 0
+        with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=6) as archive:
+            for current, dirs, files in os.walk(root, followlinks=False):
+                dirs[:] = [name for name in dirs if name not in {".git", "node_modules", "__pycache__", ".codespider"} and not os.path.islink(os.path.join(current, name))]
+                for filename in sorted(files):
+                    path = os.path.join(current, filename)
+                    if os.path.islink(path) or not os.path.isfile(path):
+                        continue
+                    relative = os.path.relpath(path, root)
+                    size = os.path.getsize(path)
+                    total += size
+                    if total > 100 * 1024 * 1024:
+                        raise ValueError("工程压缩包不能超过 100 MB")
+                    archive.write(path, relative)
+        body = output.getvalue()
+        filename = re.sub(r"[^A-Za-z0-9._-]+", "-", workspace.name).strip(".-") or "project"
+        self.send_response(200)
+        self.send_header("Content-Type", "application/zip")
+        self.send_header("Content-Disposition", 'attachment; filename="%s.zip"' % filename)
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
     def _route(self):
         return urlparse(self.path)
 
@@ -152,6 +182,9 @@ class Handler(BaseHTTPRequestHandler):
             if parsed.path == "/api/usage":
                 user = self._user()
                 return self._json(200, self.context.auth.usage(user["id"]))
+            if parsed.path == "/api/auth/checkin":
+                user = self._user()
+                return self._json(200, self.context.auth.checkin_status(user["id"]))
             if parsed.path == "/api/admin/models":
                 self._require_admin()
                 return self._json(200, {"items": [self.context.auth.public_model(item, include_secret=True) for item in self.context.auth.store.read("models", [])]})
@@ -169,6 +202,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(200, self.context.tools.catalog())
             if parsed.path == "/api/workspaces":
                 return self._json(200, {"items": [item.to_dict() for item in self.context.workspaces.list()]})
+            if parsed.path.startswith("/api/workspaces/") and parsed.path.endswith("/download"):
+                return self._download_workspace(parsed.path.split("/")[3])
             if parsed.path.startswith("/api/workspaces/") and parsed.path.endswith("/tree"):
                 workspace_id = parsed.path.split("/")[3]
                 return self._tool("workspace", "list_tree", workspace_id)
@@ -220,10 +255,27 @@ class Handler(BaseHTTPRequestHandler):
                 self.context.auth.logout(self._cookie_token())
                 return self._auth_json(200, {"ok": True}, clear_cookie=True)
             user = self._user()
+            if parsed.path == "/api/auth/checkin":
+                return self._json(200, self.context.auth.checkin(user["id"]))
             if parsed.path == "/api/conversations/free":
-                turn_id = self.context.conversations.begin(user["id"], "", body.get("text", ""))
-                self.context.conversations.finish(turn_id, reply=FREE_REPLY)
-                return self._json(201, {"id": turn_id, "reply": FREE_REPLY})
+                text = body.get("text", "")
+                history = self.context.conversations.history(user["id"], "")
+                turn_id = self.context.conversations.begin(user["id"], "", text)
+                try:
+                    model = self.context.auth.selected_model(user)
+                    if self.context.auth_required and not model:
+                        raise ValueError("管理员尚未为当前用户分配模型")
+                    model_id = model["id"] if model else "mdl_local"
+                    settings = self.context.auth.model_config(user, model_id) if self.context.auth_required else None
+                    if self.context.auth_required:
+                        self.context.auth.consume(user["id"], model_id, turn_id)
+                    reply = self.context.tasks.model.chat(str(text).strip(), history, settings_override=settings)
+                    self.context.conversations.finish(turn_id, reply=reply)
+                except Exception as exc:
+                    self.context.conversations.finish(turn_id, error=str(exc))
+                    raise
+                current_user = self.context.auth.user_from_token(self._cookie_token()) if self.context.auth_required else user
+                return self._json(201, {"id": turn_id, "reply": reply, "balance": self.context.auth.public_user(current_user or user)["balance"]})
             if parsed.path == "/api/models/select":
                 return self._json(200, {"selected": self.context.auth.select_model(user, str(body.get("model_id", "")))})
             if parsed.path == "/api/admin/models":

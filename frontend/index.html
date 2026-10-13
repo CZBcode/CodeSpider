@@ -52,6 +52,7 @@
                   <div class="settings-stat"><span>可用积分</span><b id="account-balance">—</b><small>每次模型调用消耗 1 积分</small></div>
                   <div class="settings-stat"><span>累计调用</span><b id="account-calls">—</b><small>已发起的模型调用次数</small></div>
                 </div>
+                <div class="checkin-card"><div><b>每日签到</b><p>每天签到可领取 10 积分，连续使用每天都能补充额度。</p></div><button id="checkin-button" class="outline-btn">签到领 10 积分</button><span id="checkin-status" class="saved-label" role="status"></span></div>
                 <div class="settings-account-grid">
                   <div class="global-card">
                     <div class="global-card-heading"><div><h3>工作模型</h3><p>从可用模型中选择，保存后应用于新任务。</p></div></div>
@@ -121,7 +122,7 @@
           </section>
 
           <section id="project-view" class="view">
-            <div class="project-topbar"><div class="project-title"><button class="back-btn" data-view="home">‹</button><div class="project-avatar" id="project-avatar">P</div><div><h2 id="project-name-title">项目</h2><span id="project-meta">未加载</span></div></div><div class="project-actions"><button class="outline-btn" id="toggle-context">▣ <span>上下文</span></button><button class="outline-btn" id="project-settings-btn">⚙ 设置</button></div></div>
+            <div class="project-topbar"><div class="project-title"><button class="back-btn" data-view="home">‹</button><div class="project-avatar" id="project-avatar">P</div><div><h2 id="project-name-title">项目</h2><span id="project-meta">未加载</span></div></div><div class="project-actions"><button class="outline-btn" id="download-project">⇩ <span>下载工程</span></button><button class="outline-btn" id="toggle-context">▣ <span>上下文</span></button><button class="outline-btn" id="project-settings-btn">⚙ 设置</button></div></div>
             <div class="project-workspace">
               <aside class="project-nav" id="project-nav"><button class="project-nav-item active" data-panel="chat"><span>✦</span> 对话</button><button class="project-nav-item" data-panel="explorer"><span>⌘</span> 工程结构</button><button class="project-nav-item" data-panel="artifacts"><span>▤</span> 产物</button><button class="project-nav-item" data-panel="terminal"><span>›_</span> 终端</button><div class="project-nav-divider"></div><button class="project-nav-item" data-panel="settings"><span>⚙</span> 项目设置</button></aside>
               <div class="project-main">

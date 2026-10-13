@@ -64,8 +64,9 @@ class ConversationHttpTests(unittest.TestCase):
         self.other = urllib.request.build_opener(urllib.request.HTTPCookieProcessor())
         self.request('/api/auth/register', {'username': 'admin', 'password': 'password123'}, 201)
         self.request('/api/auth/register', {'username': 'other', 'password': 'password123'}, 201, self.other)
-        project = Path(self.temp.name)/'project'; project.mkdir()
-        self.workspace = self.request('/api/workspaces', {'root': str(project)}, 201)
+        self.project = Path(self.temp.name)/'project'; self.project.mkdir()
+        (self.project / 'README.md').write_text('download me', encoding='utf-8')
+        self.workspace = self.request('/api/workspaces', {'root': str(self.project)}, 201)
 
     def tearDown(self):
         self.server.shutdown(); self.server.server_close()
@@ -131,6 +132,20 @@ class ConversationHttpTests(unittest.TestCase):
         history = self.request('/api/conversations')['items']
         self.assertEqual(history[0]['goal'], 'hello <script>')
         self.assertEqual(history[0]['reply'], reply['reply'])
+        self.assertIn('hello <script>', reply['reply'])
+        self.assertEqual(self.request('/api/auth/me')['user']['balance'], 499)
         self.assertEqual(self.request('/api/conversations', opener=self.other)['items'], [])
         self.request('/api/conversations', expected=401, opener=urllib.request.build_opener())
         self.request('/api/conversations/free', {'text': ''}, 400)
+
+    def test_project_download_returns_a_zip_without_dependencies_or_git(self):
+        response = self.admin.open(urllib.request.Request(
+            'http://127.0.0.1:%s/api/workspaces/%s/download' % (self.server.server_port, self.workspace['id'])))
+        with response:
+            payload = response.read()
+            self.assertEqual(response.status, 200)
+            self.assertEqual(response.headers.get_content_type(), 'application/zip')
+        import io, zipfile
+        with zipfile.ZipFile(io.BytesIO(payload)) as archive:
+            self.assertEqual(archive.namelist(), ['README.md'])
+            self.assertEqual(archive.read('README.md'), b'download me')

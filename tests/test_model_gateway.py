@@ -100,6 +100,11 @@ class ModelGatewayTests(unittest.TestCase):
             with self.assertRaises(ModelRequestError):
                 ModelGateway().plan("Generate code", {}, settings_override=settings)
 
+    def test_local_general_chat_uses_the_actual_message(self):
+        reply = ModelGateway().chat("请解释依赖注入")
+        self.assertIn("请解释依赖注入", reply)
+        self.assertNotEqual(reply, "我可以先帮你梳理这个问题。选择一个具体工程后，我还能继续读取代码、生成补丁并运行验证。")
+
     def test_system_prompt_requires_exact_contract_review_for_framework_apis(self):
         prompt = ModelGateway._system_prompt()
         self.assertIn("requirements checklist", prompt)

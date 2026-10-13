@@ -18,6 +18,8 @@ class AuthTests(unittest.TestCase):
         user = self.auth.register("alice", "password123")
         self.assertEqual(admin["role"], "ADMIN")
         self.assertEqual(user["role"], "USER")
+        self.assertEqual(admin["balance"], 500)
+        self.assertEqual(user["balance"], 500)
         token, logged = self.auth.login("admin", "password123")
         self.assertEqual(logged["id"], admin["id"])
         self.assertEqual(self.auth.user_from_token(token)["id"], admin["id"])
@@ -55,9 +57,20 @@ class AuthTests(unittest.TestCase):
         self.auth.assign_model(user["id"], "mdl_local")
         self.auth.consume(user["id"], "mdl_local", "request-1")
         self.assertEqual(self.auth.usage(user["id"])["total_cost"], 1)
-        self.assertEqual(self.auth.user_from_token(self.auth.login("alice", "password123")[0])["balance"], 9)
+        self.assertEqual(self.auth.user_from_token(self.auth.login("alice", "password123")[0])["balance"], 499)
         self.auth.credit(user["id"], 10)
-        self.assertEqual(self.auth.user_from_token(self.auth.login("alice", "password123")[0])["balance"], 19)
+        self.assertEqual(self.auth.user_from_token(self.auth.login("alice", "password123")[0])["balance"], 509)
+
+    def test_daily_checkin_is_idempotent_and_adds_ten_points(self):
+        user = self.auth.register("alice", "password123")
+        before = self.auth.checkin_status(user["id"])
+        self.assertFalse(before["claimed"])
+        claimed = self.auth.checkin(user["id"])
+        self.assertFalse(claimed["already_claimed"])
+        self.assertEqual(claimed["balance"], 510)
+        again = self.auth.checkin(user["id"])
+        self.assertTrue(again["already_claimed"])
+        self.assertEqual(again["balance"], 510)
 
     def test_default_prefers_configured_authorized_model_and_preserves_selection(self):
         admin = self.auth.register("admin", "password123")
