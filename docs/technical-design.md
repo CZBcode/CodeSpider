@@ -105,9 +105,11 @@ POST /api/admin/users/{id}/credit
 
 ### 2.4 OpenAI 兼容模型适配
 
-`ModelGateway` 在 provider 不是 `local` 且配置了 Base URL 与 API Key 时调用 `{base_url}/chat/completions`。请求携带 `response_format=json_object`，响应解析后必须通过 `agent.turn/v1` 校验；HTTP 错误、超时、截断 JSON 和缺少结构字段都会让任务创建失败并返回可诊断错误，不会静默生成不可审查的补丁。默认本地模型仍保留，便于离线开发和回滚。
+`ModelGateway` 在 provider 不是 `local` 且配置了 Base URL 与 API Key 时调用 `{base_url}/chat/completions`。请求携带 `response_format=json_object`，响应会先去除常见 provider wrapper、抽取完整 JSON、归一化字段别名，再通过 `agent.turn/v1` 校验；HTTP 429/5xx、网络错误、超时、截断 JSON 和契约错误按上限重试，契约失败会降级到最小响应预算。远端请求默认并发上限为 2（可用 `CODESPIDER_MODEL_CONCURRENCY` 调整），所有补丁仍必须通过路径、操作和 expected/replacement 校验。默认本地模型仍保留，便于离线开发和回滚。
 
-`benchmarks/run_adversarial.py` 使用同一结构契约对 20 个经典场景进行独立调用。批测默认关闭供应商隐藏思考并限制并发，避免 MAX 模型的推理延迟耗尽整轮测试；使用 `--enable-thinking` 可测试完整思考模式。报告保留模型输出、结构校验、关键词防御检查、超时和上游错误，Key 只从环境变量读取。
+认证模式下，任务会读取当前用户已选择且被管理员分配的模型私有配置，再将该配置传给网关；全局模型设置只作为未认证开发模式的回退，不会覆盖用户的模型选择。API Key 仅在服务端内部使用，接口和事件不返回原文。
+
+`benchmarks/run_adversarial.py` 使用同一结构契约对 20 个经典场景进行独立调用。批测默认关闭供应商隐藏思考、限制并发，并在超时、截断 JSON 或契约失败后发送一次最小修复请求；使用 `--enable-thinking` 可测试完整思考模式。报告保留模型输出、结构校验、关键词防御检查、失败分类和重试结果，Key 只从环境变量读取。
 
 ### 2.2 执行面
 

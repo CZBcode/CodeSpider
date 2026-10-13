@@ -44,11 +44,11 @@ class TaskManager:
     def events(self, task_id: str, after: int = 0) -> List[Event]:
         return [Event(**item) for item in self.store.read("events", []) if item["task_id"] == task_id and item["sequence"] > after]
 
-    def create(self, workspace_id: str, goal: str, patches: Optional[List[Dict[str, Any]]] = None, model_id: str = "", on_model_call: Any = None) -> Task:
+    def create(self, workspace_id: str, goal: str, patches: Optional[List[Dict[str, Any]]] = None, model_id: str = "", on_model_call: Any = None, model_settings: Optional[Dict[str, Any]] = None) -> Task:
         if not isinstance(goal, str) or not goal.strip():
             raise ValueError("goal cannot be empty")
         workspace = self.workspaces.get(workspace_id)
-        turn = self._make_turn(workspace, goal)
+        turn = self._make_turn(workspace, goal, model_settings)
         if on_model_call:
             on_model_call()
         task = Task(new_id("task"), workspace_id, goal.strip(), plan=turn["steps"], patches=patches or turn.get("patches", []), thinking=turn["thinking"], tool_calls=turn.get("tool_calls", []), response_schema=turn.get("schema", "agent.turn/v1"), model_id=model_id)
@@ -58,8 +58,8 @@ class TaskManager:
         self._emit(task.id, "task.plan_ready", {"schema": task.response_schema, "thinking": task.thinking, "steps": task.plan, "tool_calls": task.tool_calls})
         return task
 
-    def _make_turn(self, workspace: Any, goal: str) -> Dict[str, Any]:
-        generated = self.model.validate_turn(self.model.plan(goal, {"project_type": workspace.project_type}))
+    def _make_turn(self, workspace: Any, goal: str, model_settings: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        generated = self.model.validate_turn(self.model.plan(goal, {"project_type": workspace.project_type}, settings_override=model_settings))
         details = [
             {"step": 1, "title": "理解工作区", "action": "index", "detail": "读取工程类型、文件和相关符号"},
             {"step": 2, "title": "执行用户目标", "action": "agent", "detail": goal},
@@ -135,10 +135,11 @@ class TaskManager:
                 return
             if task.patches:
                 for patch in task.patches:
-                    if "expected" in patch:
+                    operation = patch.get("operation", "apply_patch" if "expected" in patch else "write_file")
+                    if operation == "apply_patch" or "expected" in patch:
                         request = ToolRequest(tool="workspace", action="apply_patch", workspace_id=task.workspace_id, task_id=task_id, arguments={"path": patch.get("path", ""), "expected": patch.get("expected", ""), "replacement": patch.get("replacement", "")}, approval={"approved": True, "source": "task_approval"})
                     else:
-                        request = ToolRequest(tool="workspace", action="write_file", workspace_id=task.workspace_id, task_id=task_id, arguments={"path": patch.get("path", ""), "content": patch.get("content", "")}, approval={"approved": True, "source": "task_approval"})
+                        request = ToolRequest(tool="workspace", action="write_file", workspace_id=task.workspace_id, task_id=task_id, arguments={"path": patch.get("path", ""), "content": patch.get("replacement", patch.get("content", ""))}, approval={"approved": True, "source": "task_approval"})
                     result = self._call_tool(task_id, request)
                     self._emit(task_id, "file.changed", result.data)
                 index_response = self._call_tool(task_id, ToolRequest(tool="code", action="index", workspace_id=task.workspace_id,

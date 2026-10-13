@@ -117,7 +117,7 @@ tests/            标准库单元测试
 docs/             需求与技术设计文档
 ```
 
-当前版本不包含真实模型供应商连接；任务执行器使用可审查的本地计划和工具协议。后续可在 `backend/model_gateway.py` 接入模型，同时不改变前端事件和工具契约。
+任务执行器使用可审查的本地计划和工具协议；配置 OpenAI 兼容服务后，`backend/model_gateway.py` 会对模型输出执行结构化解析、契约校验、重试和补丁安全检查。未配置远端模型时仍使用本地确定性计划，便于离线开发和回滚。
 
 ## 账户、模型与积分
 
@@ -137,7 +137,8 @@ H2 运行需要 H2 JDBC jar。开发环境可设置 `CODESPIDER_H2_JAR=/absolute
 export CODESPIDER_MODEL_API_KEY='your-key'
 python3 benchmarks/run_adversarial.py \
   --base-url https://maas.qianwenaiapi.com/compatible-mode/v1 \
-  --model qwen3.8-max --output /tmp/codespider-adversarial.json
+  --model qwen3.8-max --max-tokens 2048 --concurrency 2 --retries 1 \
+  --output /tmp/codespider-adversarial.json
 ```
 
-runner 默认关闭供应商隐藏思考以提高批测吞吐，但仍强制检查 `thinking[]`、步骤、工具调用和补丁结构；需要测试开启隐藏思考时增加 `--enable-thinking`。每个用例独立超时，报告会区分超时、JSON 契约失败和安全概念缺失。
+runner 默认关闭供应商隐藏思考以提高批测吞吐，但仍强制检查 `thinking[]`、步骤、工具调用和补丁结构；需要测试开启隐藏思考时增加 `--enable-thinking`。每个用例独立超时，报告会区分超时、上游错误、JSON 契约失败和安全语义缺失。

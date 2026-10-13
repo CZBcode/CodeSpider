@@ -167,6 +167,17 @@ class AuthService:
         selected = user.get("selected_model_id")
         return next((item for item in available if item["id"] == selected), available[0] if available else None)
 
+    def model_config(self, user: Dict[str, Any], model_id: str) -> Dict[str, Any]:
+        """Return the selected model's private provider settings after access checks."""
+        selected = next((item for item in self.store.read("models", []) if item.get("id") == model_id and item.get("enabled")), None)
+        if not selected:
+            raise ValueError("模型不存在或已停用")
+        if user.get("role") != "ADMIN":
+            allowed = any(item.get("user_id") == user.get("id") and item.get("model_id") == model_id for item in self.store.read("user_models", []))
+            if not allowed:
+                raise PermissionError("该模型未分配给当前用户")
+        return dict(selected)
+
     def consume(self, user_id: str, model_id: str, request_id: str = "") -> Dict[str, Any]:
         # Keep the balance decrement and usage journal in one process/file lock.
         # request_id makes retries from the task runner idempotent.

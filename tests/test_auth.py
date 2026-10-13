@@ -37,6 +37,18 @@ class AuthTests(unittest.TestCase):
         self.assertEqual(self.auth.select_model(user, model["id"])["id"], model["id"])
         self.assertEqual(self.auth.list_models(admin)[0]["id"], "mdl_local")
 
+    def test_selected_model_config_is_scoped_and_keeps_provider_secret_private(self):
+        admin = self.auth.register("admin", "password123")
+        user = self.auth.register("alice", "password123")
+        model = self.auth.create_model({"name": "团队模型", "provider": "custom", "model": "team-v1", "base_url": "https://example.invalid/v1", "api_key": "secret"})
+        self.auth.assign_model(user["id"], model["id"])
+        config = self.auth.model_config(user, model["id"])
+        self.assertEqual(config["model"], "team-v1")
+        self.assertEqual(config["api_key"], "secret")
+        with self.assertRaises(PermissionError):
+            self.auth.model_config(user, "mdl_local")
+        self.assertEqual(self.auth.model_config(admin, "mdl_local")["provider"], "local")
+
     def test_each_model_call_costs_one_and_admin_can_credit(self):
         admin = self.auth.register("admin", "password123")
         user = self.auth.register("alice", "password123")
