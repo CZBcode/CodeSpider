@@ -23,9 +23,22 @@ def detect_project(root: str) -> Dict[str, Any]:
         except (OSError, ValueError):
             pass
     python_markers = {"pyproject.toml", "requirements.txt", "setup.py", "manage.py"}
-    if files.intersection(python_markers) or any(name.endswith(".py") for name in files):
+    source_files = _project_files(root)
+    if files.intersection(python_markers) or any(name.endswith(".py") for name in source_files):
         tests_dir = os.path.isdir(os.path.join(root, "tests"))
-        has_tests = tests_dir or any(name.startswith("test") and name.endswith(".py") for name in files)
+        has_tests = tests_dir or any(name.startswith("test") and name.endswith(".py") for name in source_files)
         tests = ["python3 -m unittest discover -s tests -v" if tests_dir else "python3 -m unittest discover -v"] if has_tests else []
         return {"type": "python", "commands": ["python3 -m compileall -q .", "pytest"], "verification_commands": tests}
     return {"type": "unknown", "commands": []}
+
+
+def _project_files(root: str):
+    """Return bounded, ignored-directory-aware file names for type detection."""
+    result = []
+    ignored = {".git", ".codespider", "node_modules", "target", "dist", "__pycache__", ".venv", "venv"}
+    for current, dirs, names in os.walk(root):
+        dirs[:] = [name for name in dirs if name not in ignored and not name.startswith(".")]
+        result.extend(names)
+        if len(result) >= 10000:
+            break
+    return result[:10000]

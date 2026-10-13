@@ -70,7 +70,7 @@ class TaskManagerTests(unittest.TestCase):
                 def call(self, request):
                     self.calls += 1
                     code = 1 if self.calls < 3 else 0
-                    return ToolResponse(request.request_id, True, {"exit_code": code, "output": "temporary"})
+                    return ToolResponse(request.request_id, True, {"exit_code": code, "output": "temporary connection timeout"})
 
             command = FlakyCommand()
             original = context.tasks.tools

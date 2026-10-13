@@ -229,7 +229,7 @@ class TaskManager:
             self._emit(task_id, "tool.result", response.to_dict())
             process_failed = request.tool == "process" and request.action == "run" and response.ok and response.data.get("exit_code") != 0
             error = response.error or {}
-            retryable = process_failed or bool(error.get("retryable"))
+            retryable = (self._retryable_process_result(response.data) if process_failed else bool(error.get("retryable")))
             if response.ok and not process_failed:
                 if attempt > 1:
                     response.data["attempts"] = attempt
@@ -255,6 +255,17 @@ class TaskManager:
         ):
             return "执行失败（exit code %s）：当前 Agent 环境找不到 Maven。请安装 Maven 3.8+ 或提供 ./mvnw，然后重试。" % exit_code
         return "执行失败（exit code %s）：命令 %s 未通过。详细输出已折叠，请展开查看，修复后重试。" % (exit_code, command)
+
+    @staticmethod
+    def _retryable_process_result(result: Dict[str, Any]) -> bool:
+        """Retry only failures that can plausibly succeed without code changes."""
+        output = str(result.get("output", "")).lower()
+        exit_code = result.get("exit_code")
+        transient_markers = (
+            "timed out", "timeout", "connection reset", "connection refused",
+            "could not transfer artifact", "temporary failure", "503", "502", "429",
+        )
+        return exit_code in (75, 408, 429, 500, 502, 503, 504) or any(marker in output for marker in transient_markers)
 
     @staticmethod
     def _friendly_error(message: str) -> str:

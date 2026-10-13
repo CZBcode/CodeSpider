@@ -108,6 +108,17 @@ class GenerationWorkflowTests(unittest.TestCase):
         self.assertIn('npm ci', detect_project(str(self.root))['setup_commands'][0])
         self.assertEqual(detect_project(str(self.root))['verification_commands'], ['npm test -- --run'])
 
+    def test_nested_python_package_is_detected_as_python_project(self):
+        package = self.root / 'billing'
+        package.mkdir()
+        (package / '__init__.py').write_text('')
+        tests = self.root / 'tests'
+        tests.mkdir()
+        (tests / 'test_billing.py').write_text('import unittest\n')
+        detected = detect_project(str(self.root))
+        self.assertEqual(detected['type'], 'python')
+        self.assertEqual(detected['verification_commands'], ['python3 -m unittest discover -s tests -v'])
+
     def test_unseen_or_stale_existing_file_cannot_be_generated_over(self):
         for item in [
             {'path':'main.py','operation':'write_file','replacement':'oops'},
