@@ -72,7 +72,7 @@ class ToolService:
         message = str(exc).lower()
         # These errors describe a stable user or workspace problem. Retrying
         # would repeat the same operation and could hide the real fix.
-        stable = ("cancelled", "file changed", "source changed", "not found", "larger than", "requires")
+        stable = ("cancelled", "file changed", "source changed", "not found", "找不到", "larger than", "requires")
         return not any(marker in message for marker in stable)
 
     def catalog(self) -> Dict[str, Any]:
