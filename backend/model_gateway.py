@@ -101,6 +101,8 @@ class ModelGateway:
                     result["schema"] = SCHEMA
                     break
         schema_value = result.get("schema")
+        if isinstance(schema_value, dict):
+            schema_value = schema_value.get("name", schema_value.get("version", schema_value.get("value")))
         if isinstance(schema_value, str):
             schema_value = schema_value.strip().lower().replace("_", ".")
         if schema_value in (True, "v1", "agent.turn", "agent.turn/v1", "agent.turn.version.1"):
@@ -124,6 +126,13 @@ class ModelGateway:
                 merged = dict(value)
                 for name, item in raw.items():
                     if name not in (key, "agent") and name not in merged:
+                        merged[name] = item
+                return merged
+        for key, value in raw.items():
+            if isinstance(value, dict) and ("agent.turn" in str(key).lower() or str(key).lower() in ("response", "output", "payload", "content", "json")):
+                merged = dict(value)
+                for name, item in raw.items():
+                    if name != key and name not in merged:
                         merged[name] = item
                 return merged
         agent = raw.get("agent")
