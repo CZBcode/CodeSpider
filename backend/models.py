@@ -48,6 +48,8 @@ class Task:
     design_contract: Dict[str, Any] = field(default_factory=dict)
     design_review: Dict[str, Any] = field(default_factory=dict)
     summary: str = ""
+    owner_id: str = ""
+    conversation_turn_id: str = ""
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)

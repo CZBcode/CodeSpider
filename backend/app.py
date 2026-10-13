@@ -12,6 +12,7 @@ from urllib.parse import parse_qs, urlparse
 
 from backend.store import JsonStore
 from backend.auth import AuthService
+from backend.conversations import ConversationService, FREE_REPLY
 from backend.h2_store import H2Store
 from backend.task_manager import TaskManager
 from backend.workspaces import WorkspaceManager
@@ -39,6 +40,7 @@ class AppContext:
         else:
             self.account_store = JsonStore(os.path.join(data_dir, "accounts-dev"))
         self.auth = AuthService(self.account_store)
+        self.conversations = ConversationService(self.account_store, self.store)
         self.workspaces = WorkspaceManager(self.store)
         self.settings = SettingsService(self.store)
         self.processes = ProcessManager()
@@ -88,6 +90,15 @@ class Handler(BaseHTTPRequestHandler):
         if user.get("role") != "ADMIN":
             raise PermissionError("只有管理员可以执行此操作")
         return user
+
+    def _owned_task(self, task_id):
+        task = self.context.tasks.get(task_id)
+        user = self._user()
+        if task.owner_id and task.owner_id != user["id"]:
+            raise PermissionError("无权访问该会话任务")
+        if not task.owner_id and user.get("role") != "ADMIN":
+            raise PermissionError("无权访问历史未归属任务")
+        return task
 
     def _auth_json(self, status, payload, token=None, clear_cookie=False):
         body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
@@ -151,6 +162,9 @@ class Handler(BaseHTTPRequestHandler):
                 self._user()
             if parsed.path == "/api/settings":
                 return self._json(200, self.context.settings.public())
+            if parsed.path == "/api/conversations":
+                workspace_id = parse_qs(parsed.query).get("workspace_id", [""])[0]
+                return self._json(200, {"items": self.context.conversations.history(self._user()["id"], workspace_id)})
             if parsed.path == "/api/tools":
                 return self._json(200, self.context.tools.catalog())
             if parsed.path == "/api/workspaces":
@@ -170,10 +184,11 @@ class Handler(BaseHTTPRequestHandler):
             if parsed.path.startswith("/api/tasks/") and parsed.path.endswith("/events"):
                 parts = parsed.path.split("/")
                 task_id = parts[3]
+                self._owned_task(task_id)
                 after = int(parse_qs(parsed.query).get("after", [0])[0])
                 return self._json(200, {"items": [event.to_dict() for event in self.context.tasks.events(task_id, after)]})
             if parsed.path.startswith("/api/tasks/"):
-                task = self.context.tasks.get(parsed.path.split("/")[3])
+                task = self._owned_task(parsed.path.split("/")[3])
                 return self._json(200, task.to_dict())
             if parsed.path == "/api/memories/search":
                 query = parse_qs(parsed.query).get("q", [""])[0]
@@ -205,6 +220,10 @@ class Handler(BaseHTTPRequestHandler):
                 self.context.auth.logout(self._cookie_token())
                 return self._auth_json(200, {"ok": True}, clear_cookie=True)
             user = self._user()
+            if parsed.path == "/api/conversations/free":
+                turn_id = self.context.conversations.begin(user["id"], "", body.get("text", ""))
+                self.context.conversations.finish(turn_id, reply=FREE_REPLY)
+                return self._json(201, {"id": turn_id, "reply": FREE_REPLY})
             if parsed.path == "/api/models/select":
                 return self._json(200, {"selected": self.context.auth.select_model(user, str(body.get("model_id", "")))})
             if parsed.path == "/api/admin/models":
@@ -236,12 +255,25 @@ class Handler(BaseHTTPRequestHandler):
                     raise ValueError("管理员尚未为当前用户分配模型")
                 model_id = model["id"] if model else "mdl_local"
                 model_settings = self.context.auth.model_config(user, model_id) if self.context.auth_required else None
-                task = self.context.tasks.create(body.get("workspace_id", ""), body.get("goal", ""), body.get("patches", []), model_id=model_id, model_settings=model_settings, context_approved=body.get("context_approved", False), on_model_call=(lambda: self.context.auth.consume(user["id"], model_id, body.get("request_id", ""))) if self.context.auth_required else None)
+                turn_id = ""
+                def begin_turn():
+                    nonlocal turn_id
+                    turn_id = self.context.conversations.begin(user["id"], body.get("workspace_id", ""), body.get("goal", ""))
+                    return turn_id
+                try:
+                    task = self.context.tasks.create(body.get("workspace_id", ""), body.get("goal", ""), body.get("patches", []), model_id=model_id, model_settings=model_settings, context_approved=body.get("context_approved", False), on_model_call=(lambda: self.context.auth.consume(user["id"], model_id, body.get("request_id", ""))) if self.context.auth_required else None, owner_id=user["id"], on_generation_start=begin_turn)
+                    self.context.conversations.finish(turn_id, reply=task.summary)
+                except Exception as exc:
+                    if turn_id:
+                        self.context.conversations.finish(turn_id, error=str(exc))
+                    raise
                 return self._json(201, task.to_dict())
             if parsed.path.endswith("/approve"):
+                self._owned_task(parsed.path.split("/")[3])
                 task = self.context.tasks.approve(parsed.path.split("/")[3])
                 return self._json(200, task.to_dict())
             if parsed.path.endswith("/cancel"):
+                self._owned_task(parsed.path.split("/")[3])
                 task = self.context.tasks.cancel(parsed.path.split("/")[3])
                 return self._json(200, task.to_dict())
             if parsed.path == "/api/memories":

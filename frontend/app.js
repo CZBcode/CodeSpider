@@ -1,18 +1,19 @@
-const state = { workspaces: [], currentWorkspace: null, task: null, currentPanel: "chat", sessions: new Map(), user: null, models: [], usage: null, authMode: "login", settingsTab: "account" };
+const state = { workspaces: [], currentWorkspace: null, task: null, currentPanel: "chat", sessions: new Map(), user: null, models: [], usage: null, authMode: "login", settingsTab: "account", accountEpoch: 0 };
 const $ = (id) => document.getElementById(id);
 
 // Session DOM nodes stay bound to their original task even while detached.
 const welcomeMarkup = $("project-messages").innerHTML;
+const freeWelcomeMarkup = $("free-messages").innerHTML;
 function projectSession(workspaceId) {
-  if (!state.sessions.has(workspaceId)) state.sessions.set(workspaceId, { messages: [], task: null, draft: "", command: "", serviceCommand: "", generation: 0 });
+  if (!state.sessions.has(workspaceId)) state.sessions.set(workspaceId, { messages: [], task: null, draft: "", command: "", serviceCommand: "", generation: 0, historyLoaded: false, historyLoading: null, turnViews: new Map() });
   return state.sessions.get(workspaceId);
 }
 function renderConversation(workspaceId) {
-  if (workspaceId !== state.currentWorkspace?.id) return;
-  const container = $("project-messages"), session = projectSession(workspaceId);
+  if (workspaceId !== "" && workspaceId !== state.currentWorkspace?.id) return;
+  const container = $(workspaceId === "" ? "free-messages" : "project-messages"), session = projectSession(workspaceId);
   container.replaceChildren(...session.messages);
   if (!session.messages.length) {
-    container.innerHTML = welcomeMarkup;
+    container.innerHTML = workspaceId === "" ? freeWelcomeMarkup : welcomeMarkup;
     document.querySelectorAll("[data-suggest]").forEach((item) => item.onclick = () => { $("project-input").value = item.dataset.suggest; sendProjectMessage(); });
   }
   container.scrollTop = container.scrollHeight;
@@ -21,6 +22,53 @@ function addProjectMessage(workspaceId, message) {
   projectSession(workspaceId).messages.push(message);
   renderConversation(workspaceId);
 }
+function resetConversations() {
+  state.accountEpoch++;
+  state.sessions.clear(); state.currentWorkspace = null; state.task = null;
+  $("project-messages").replaceChildren(); $("free-messages").replaceChildren();
+  for (const id of ["project-input", "free-input", "quick-chat"]) $(id).value = "";
+}
+async function loadConversation(workspaceId, refresh = false) {
+  const session = projectSession(workspaceId), epoch = state.accountEpoch;
+  if (session.historyLoading) return session.historyLoading;
+  if (session.historyLoaded && !refresh) return;
+  session.historyLoading = (async () => {
+    try {
+      const data = await api(`/api/conversations?workspace_id=${encodeURIComponent(workspaceId)}`);
+      if (epoch !== state.accountEpoch) return;
+      const previous = session.historyLoaded ? [] : session.messages.splice(0);
+      for (const turn of data.items || []) {
+        let view = session.turnViews.get(turn.id);
+        if (!view) {
+          appendMessage("user", turn.goal, workspaceId);
+          view = {message: appendMessage("agent", turn.error || turn.reply || "正在生成回复…", workspaceId)};
+          session.turnViews.set(turn.id, view);
+        }
+        if (turn.task && !view.taskId) {
+          const task = turn.task;
+          const controls = appendAgentTurn(task, view.message);
+          view.taskId = task.id;
+          session.task = task;
+          if (state.currentWorkspace?.id === workspaceId) state.task = task;
+          const run = {taskId: task.id, workspaceId, after: 0, ...controls, epoch};
+          for (const event of turn.events || []) { renderTaskEvent(event, run); run.after = Math.max(run.after, event.sequence); }
+          if (["succeeded", "failed", "cancelled"].includes(task.status)) finishTaskView(run, task.status);
+          else if (["executing", "cancelling"].includes(task.status)) pollTask(run);
+        } else if (!turn.task) {
+          view.message.innerHTML = `<div class="message-bubble">${escapeHtml(turn.error || turn.reply || "正在生成回复…")}</div>`;
+        }
+      }
+      session.messages.push(...previous);
+      session.historyLoaded = true;
+      renderConversation(workspaceId);
+      if ((data.items || []).some(turn => turn.status === "generating")) {
+        setTimeout(() => { if (epoch === state.accountEpoch) loadConversation(workspaceId, true); }, 1500);
+      }
+    } catch (error) { if (epoch === state.accountEpoch) showError(new Error(`历史记录加载失败：${error.message}，重新打开工程可重试`)); }
+    finally { session.historyLoading = null; }
+  })();
+  return session.historyLoading;
+}
 function updateSessionTask(workspaceId, task) {
   const session = projectSession(workspaceId);
   if (session.task?.id === task.id) session.task = task;
@@ -28,9 +76,10 @@ function updateSessionTask(workspaceId, task) {
 }
 
 async function api(path, options = {}) {
+  const epoch = state.accountEpoch;
   const response = await fetch(path, { headers: { "Content-Type": "application/json" }, ...options });
   const data = await response.json();
-  if (!response.ok) { const payload = data.error && typeof data.error === "object" ? data.error : data; const error = new Error(payload.message || payload.error || "请求失败"); error.approvalRequired = Boolean(payload.approval_required); error.authRequired = response.status === 401; error.payload = payload; if (error.authRequired && !path.startsWith("/api/auth/")) showAuth("login"); throw error; }
+  if (!response.ok) { const payload = data.error && typeof data.error === "object" ? data.error : data; const error = new Error(payload.message || payload.error || "请求失败"); error.approvalRequired = Boolean(payload.approval_required); error.authRequired = response.status === 401; error.payload = payload; if (error.authRequired && epoch === state.accountEpoch && !path.startsWith("/api/auth/")) showAuth("login"); throw error; }
   return data;
 }
 async function callTool(tool, action, workspaceId, argumentsValue = {}, approved = false) { const response = await api("/api/tools/call", { method: "POST", body: JSON.stringify({ api_version: "1.0", tool, action, workspace_id: workspaceId || "", arguments: argumentsValue, approval: approved === true ? { approved: true, source: "user_confirmation" } : {} }) }); return response.data; }
@@ -38,7 +87,7 @@ async function callTool(tool, action, workspaceId, argumentsValue = {}, approved
 function showAuth(mode = "login") { state.authMode = mode; $("auth-screen").classList.remove("hidden"); $("app-shell").classList.add("auth-locked"); $("auth-title").textContent = mode === "register" ? "注册 CodeSpider" : "登录 CodeSpider"; $("auth-subtitle").textContent = mode === "register" ? "首个注册用户自动成为管理员。" : "登录后管理工程、模型和积分用量。"; $("auth-submit").textContent = mode === "register" ? "注册并登录" : "登录"; $("auth-switch").textContent = mode === "register" ? "已有账号？登录" : "没有账号？注册"; $("auth-error").textContent = ""; $("auth-form").reset(); }
 function hideAuth() { $("auth-screen").classList.add("hidden"); $("app-shell").classList.remove("auth-locked"); }
 async function submitAuth(event) { event.preventDefault(); try { const endpoint = state.authMode === "register" ? "/api/auth/register" : "/api/auth/login"; await api(endpoint, { method: "POST", body: JSON.stringify({ username: $("auth-username").value.trim(), password: $("auth-password").value }) }); await loadAccount(); hideAuth(); await loadWorkspaces(); } catch (error) { $("auth-error").textContent = error.message || "认证失败"; } }
-async function loadAccount() { const account = await api("/api/auth/me"); state.user = account.user; state.models = account.models || []; state.usage = account.usage || { total_calls: 0, total_cost: 0 }; updateAccountUi(account); if (state.user.role === "ADMIN") await loadAdminData(); }
+async function loadAccount() { const account = await api("/api/auth/me"); if (state.user?.id !== account.user?.id) resetConversations(); state.user = account.user; state.models = account.models || []; state.usage = account.usage || { total_calls: 0, total_cost: 0 }; updateAccountUi(account); if (state.user.role === "ADMIN") await loadAdminData(); }
 function switchSettingsTab(tab = "account") {
   if (!["account", "models", "users", "defaults"].includes(tab) || (tab !== "account" && state.user?.role !== "ADMIN")) tab = "account";
   state.settingsTab = tab;
@@ -89,7 +138,7 @@ async function assignModel(modelId, users) { const username = window.prompt(`输
 function escapeHtml(value) { return String(value ?? "").replace(/[&<>\"]/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '\"': "&quot;" }[char])); }
 function showToast(message) { const toast = $("toast"); toast.textContent = message; toast.classList.add("show"); setTimeout(() => toast.classList.remove("show"), 2300); }
 function showError(error) { showToast(error.message || "请求失败"); }
-function setView(view) { document.querySelectorAll(".view").forEach((item) => item.classList.remove("active-view")); const target = $(`${view}-view`); if (target) target.classList.add("active-view"); document.querySelectorAll(".nav-item").forEach((item) => item.classList.toggle("active", item.dataset.view === view)); }
+function setView(view) { if (view === "free-chat") loadConversation(""); document.querySelectorAll(".view").forEach((item) => item.classList.remove("active-view")); const target = $(`${view}-view`); if (target) target.classList.add("active-view"); document.querySelectorAll(".nav-item").forEach((item) => item.classList.toggle("active", item.dataset.view === view)); }
 
 async function loadWorkspaces() { const data = await api("/api/workspaces"); state.workspaces = data.items; renderWorkspaceLists(); }
 function projectIcon(type) { return type === "python" ? "Py" : type === "vue" ? "V" : type === "java-springboot" ? "J" : "⌘"; }
@@ -123,7 +172,7 @@ async function openWorkspace(id) {
   renderWorkspaceLists();
   updateProjectHeader();
   fillSettings();
-  await loadExplorer();
+  await Promise.all([loadExplorer(), loadConversation(id)]);
 }
 function updateProjectHeader() { const workspace = state.currentWorkspace; $("project-name-title").textContent = workspace.name; $("project-meta").textContent = `${workspace.project_type} · ${modeLabel(workspace.execution_mode)} · ${workspace.root}`; $("project-avatar").textContent = projectIcon(workspace.project_type); $("context-project").textContent = workspace.name; $("context-path").textContent = workspace.root; $("context-mode").textContent = modeLabel(workspace.execution_mode); $("context-description").textContent = workspace.description || "还没有添加说明"; }
 function openNewProject() { $("new-project-form").classList.remove("hidden"); $("project-name").focus(); }
@@ -170,23 +219,29 @@ async function previewFile(path, approved = false, workspace = state.currentWork
 async function createTask(goal) {
   const workspace = state.currentWorkspace;
   if (!workspace) return showError(new Error("请先选择工程"));
-  const session = projectSession(workspace.id), generation = ++session.generation;
+  const session = projectSession(workspace.id), generation = ++session.generation, epoch = state.accountEpoch;
   const pending = appendMessage("agent", "思考中 · 正在生成回复与代码，请稍候…", workspace.id);
   try {
+    if (session.historyLoading) await session.historyLoading;
+    if (epoch !== state.accountEpoch) return;
     const requestTask = (contextApproved) => api("/api/tasks", { method: "POST", body: JSON.stringify({ workspace_id: workspace.id, goal, context_approved: contextApproved }) });
     let task;
     try { task = await requestTask(false); }
     catch (error) {
+      if (epoch !== state.accountEpoch) return;
       if (!error.approvalRequired || !window.confirm(`${error.message}\n\n工程：${workspace.name}\n是否继续？`)) throw error;
       task = await requestTask(true);
     }
+    if (epoch !== state.accountEpoch) return;
     if (session.generation === generation) {
       session.task = task;
       if (state.currentWorkspace?.id === workspace.id) state.task = task;
     }
     appendAgentTurn(task, pending);
+    if (task.conversation_turn_id) session.turnViews.set(task.conversation_turn_id, {message: pending, taskId: task.id});
     if (state.currentWorkspace?.id === workspace.id) switchPanel("chat");
   } catch (error) {
+    if (epoch !== state.accountEpoch) return;
     pending.innerHTML = `<div class="message-bubble" role="alert">${escapeHtml(`生成未完成：${error.message}。请检查模型设置或重试。`)}</div>`;
     if (state.currentWorkspace?.id === workspace.id) showError(error);
   }
@@ -207,13 +262,15 @@ function designPreview(task) {
   const metrics = report?.metrics;
   return `<details class="thinking-card"><summary>设计与结构审查${metrics ? ` · ${metrics.modules} 模块 / ${metrics.classes} 类 / ${metrics.functions} 函数` : ""}</summary><div class="thinking-body">${modules}${contracts}${patterns}${structure}<p>${dependencies}</p>${report ? `<p>${report.blocking ? "未满足强制契约" : report.passed ? "已检查规则通过" : "存在结构建议或未完成检查"} · ${report.mode === "enforce" ? "强制" : "建议"}</p><ul>${findings}</ul><p>${(report.limitations || []).map(escapeHtml).join(" ")}</p>` : ""}</div></details>`;
 }
-function appendDesignReview(event, workspaceId) {
+function appendDesignReview(event, workspaceId, taskId = "") {
   const message = document.createElement("div"); message.className = "message agent";
+  message.dataset.taskId = taskId;
   message.innerHTML = designPreview({design_review:event.payload}); addProjectMessage(workspaceId,message);
 }
 function appendAgentTurn(task, existingMessage = null) {
   const message = existingMessage || document.createElement("div");
   message.className = "message agent";
+  message.dataset.taskId = task.id;
   const thinking = (task.thinking || []).map((item) => `<div class="thinking-line"><b>${escapeHtml(item.title)}</b><span>${escapeHtml(item.summary)}</span></div>`).join("");
   const steps = (task.plan || []).map((step) => `<div class="thinking-line"><b>${escapeHtml(step.step)}. ${escapeHtml(step.title)}</b><span>${escapeHtml(step.detail)}</span></div>`).join("");
   const count = task.patches?.length || 0;
@@ -224,63 +281,105 @@ function appendAgentTurn(task, existingMessage = null) {
   const button = message.querySelector(".approve-inline"), statusNode = message.querySelector(".task-status");
   button.onclick = () => approveTask(task, button, statusNode);
   if (!existingMessage) addProjectMessage(task.workspace_id, message);
+  if (["executing", "cancelling", "succeeded", "failed", "cancelled"].includes(task.status)) {
+    button.disabled = true;
+    button.textContent = ({succeeded:"已完成", failed:"执行失败", cancelled:"已取消"})[task.status] || "执行中…";
+    if (statusNode) statusNode.textContent = task.error || button.textContent;
+  }
+  return {button, statusNode};
 }
-function appendMessage(role, text, workspaceId = state.currentWorkspace?.id) { const message = document.createElement("div"); message.className = `message ${role}`; message.innerHTML = `<div class="message-bubble">${escapeHtml(text)}</div>`; addProjectMessage(workspaceId, message); return message; }
+function appendMessage(role, text, workspaceId = state.currentWorkspace?.id, taskId = "") { const message = document.createElement("div"); message.className = `message ${role}`; message.dataset.taskId = taskId; message.innerHTML = `<div class="message-bubble">${escapeHtml(text)}</div>`; addProjectMessage(workspaceId, message); return message; }
 async function sendProjectMessage() { const input = $("project-input"); const goal = input.value.trim(); if (!goal) return; input.value = ""; appendMessage("user", goal); await createTask(goal); }
-function sendFreeMessage() { const input = $("free-input"); const text = input.value.trim(); if (!text) return; input.value = ""; const container = $("free-messages"); const welcome = container.querySelector(".welcome-message"); if (welcome) welcome.remove(); const message = document.createElement("div"); message.className = "message user"; message.innerHTML = `<div class="message-bubble">${escapeHtml(text)}</div>`; container.appendChild(message); const answer = document.createElement("div"); answer.className = "message agent"; answer.innerHTML = `<div class="message-bubble">我可以先帮你梳理这个问题。选择一个具体工程后，我还能继续读取代码、生成补丁并运行验证。</div>`; container.appendChild(answer); container.scrollTop = container.scrollHeight; }
+async function sendFreeMessage() {
+  const input = $("free-input"), text = input.value.trim(), epoch = state.accountEpoch;
+  if (!text) return;
+  input.value = "";
+  appendMessage("user", text, "");
+  const pending = appendMessage("agent", "正在保存对话…", "");
+  try {
+    await loadConversation("");
+    if (epoch !== state.accountEpoch) return;
+    const result = await api("/api/conversations/free", {method: "POST", body: JSON.stringify({text})});
+    if (epoch !== state.accountEpoch) return;
+    pending.innerHTML = `<div class="message-bubble">${escapeHtml(result.reply)}</div>`;
+    projectSession("").turnViews.set(result.id, {message: pending});
+  } catch (error) {
+    if (epoch !== state.accountEpoch) return;
+    pending.innerHTML = `<div class="message-bubble" role="alert">${escapeHtml(`对话保存失败：${error.message}，请重新发送。`)}</div>`;
+  }
+}
 
 async function approveTask(task, button, statusNode = null) {
   if (!task || button.disabled) return;
   if (task.workspace_id !== state.currentWorkspace?.id) return showError(new Error("请先打开这个任务所属的工程"));
+  const epoch = state.accountEpoch;
   button.disabled = true;
   button.textContent = "提交中…";
   try {
     const approved = await api(`/api/tasks/${task.id}/approve`, { method: "POST", body: "{}" });
+    if (epoch !== state.accountEpoch) return;
     updateSessionTask(task.workspace_id, approved);
     button.textContent = "执行中…";
     if (statusNode) statusNode.textContent = task.patches?.length ? "已批准，正在写入文件并执行验证。" : "已批准，正在分析和验证工程。";
     appendMessage("agent", "任务已批准，Agent 正在执行工程分析和验证命令。", task.workspace_id);
-    pollTask({ taskId: task.id, workspaceId: task.workspace_id, after: 0, button, statusNode });
+    pollTask({ taskId: task.id, workspaceId: task.workspace_id, after: 0, button, statusNode, epoch });
   } catch (error) {
+    if (epoch !== state.accountEpoch) return;
     button.disabled = false;
     button.textContent = "批准执行";
     appendMessage("agent", `批准失败：${error.message}。可以重试。`, task.workspace_id);
     showError(error);
   }
 }
-function appendToolEvent(event, workspaceId) { const request = event.payload?.request || {}; const message = document.createElement("div"); message.className = "message agent"; message.innerHTML = `<details class="thinking-card tool-card"><summary><span class="thinking-label">工具调用</span><span class="thinking-meta">调用 ${escapeHtml(request.tool || "tool")}.${escapeHtml(request.action || "call")}</span></summary><div class="thinking-body"><div class="thinking-line"><b>工具请求</b><span>${escapeHtml(JSON.stringify(request.arguments || {}))}</span></div></div></details>`; addProjectMessage(workspaceId, message); }
+function appendToolEvent(event, workspaceId, taskId = "") { const request = event.payload?.request || {}; const message = document.createElement("div"); message.className = "message agent"; message.dataset.taskId = taskId; message.innerHTML = `<details class="thinking-card tool-card"><summary><span class="thinking-label">工具调用</span><span class="thinking-meta">调用 ${escapeHtml(request.tool || "tool")}.${escapeHtml(request.action || "call")}</span></summary><div class="thinking-body"><div class="thinking-line"><b>工具请求</b><span>${escapeHtml(JSON.stringify(request.arguments || {}))}</span></div></div></details>`; addProjectMessage(workspaceId, message); }
+function collapseTaskDetails(workspaceId, taskId) {
+  for (const node of projectSession(workspaceId).messages) {
+    if (node.dataset?.taskId === taskId) for (const detail of node.querySelectorAll?.("details") || []) detail.open = false;
+  }
+}
+function finishTaskView(run, status) {
+  run.finished = true; run.button.disabled = true;
+  run.button.textContent = ({succeeded: "已完成", failed: "执行失败", cancelled: "已取消"})[status];
+  collapseTaskDetails(run.workspaceId, run.taskId);
+}
+function renderTaskEvent(event, run) {
+  if (event.type === "tool.call") appendToolEvent(event, run.workspaceId, run.taskId);
+  if (event.type === "file.changed") appendMessage("agent", `已写入文件：${event.payload.path || event.payload.relative_path || "工程文件"}`, run.workspaceId, run.taskId);
+  if (event.type === "process.output") appendMessage("agent", `验证命令：${event.payload.command || ""}\n退出码：${event.payload.exit_code}\n${(event.payload.output || "").slice(-12000)}`, run.workspaceId, run.taskId);
+  if (event.type === "agent.notice") appendMessage("agent", event.payload.message, run.workspaceId, run.taskId);
+  if (event.type === "design.reviewed") appendDesignReview(event, run.workspaceId, run.taskId);
+  if (["task.succeeded", "task.failed", "task.cancelled"].includes(event.type) && !run.terminalSeen) {
+    const result = event.payload.message || event.payload.error || ({"task.succeeded": "执行完成", "task.failed": "执行失败", "task.cancelled": "任务已取消"})[event.type];
+    appendMessage("agent", result, run.workspaceId, run.taskId);
+    if (run.statusNode) run.statusNode.textContent = result;
+    run.terminalSeen = true;
+    collapseTaskDetails(run.workspaceId, run.taskId);
+  }
+}
 async function pollTask(run) {
-  if (!run || run.finished) return;
+  if (!run || run.finished || (run.epoch !== undefined && run.epoch !== state.accountEpoch)) return;
   try {
     const data = await api(`/api/tasks/${run.taskId}/events?after=${run.after}`);
+    if (run.epoch !== undefined && run.epoch !== state.accountEpoch) return;
     for (const event of data.items) {
       if (event.sequence <= run.after) continue;
-      if (event.type === "tool.call") appendToolEvent(event, run.workspaceId);
-      if (event.type === "file.changed") appendMessage("agent", `已写入文件：${event.payload.path || event.payload.relative_path || "工程文件"}`, run.workspaceId);
-      if (event.type === "process.output") appendMessage("agent", `验证命令：${event.payload.command || ""}\n退出码：${event.payload.exit_code}\n${(event.payload.output || "").slice(-12000)}`, run.workspaceId);
-      if (event.type === "agent.notice") appendMessage("agent", event.payload.message, run.workspaceId);
-      if (event.type === "design.reviewed") appendDesignReview(event, run.workspaceId);
-      if (["task.succeeded", "task.failed", "task.cancelled"].includes(event.type) && !run.terminalSeen) {
-        const result = event.payload.message || event.payload.error || ({"task.succeeded": "执行完成", "task.failed": "执行失败", "task.cancelled": "任务已取消"})[event.type];
-        appendMessage("agent", result, run.workspaceId);
-        if (run.statusNode) run.statusNode.textContent = result;
-        run.terminalSeen = true;
-      }
+      renderTaskEvent(event, run);
       run.after = event.sequence;
     }
     const latest = await api(`/api/tasks/${run.taskId}`);
+    if (run.epoch !== undefined && run.epoch !== state.accountEpoch) return;
     updateSessionTask(run.workspaceId, latest);
     run.failures = 0;
     const terminal = ["succeeded", "failed", "cancelled"].includes(latest.status);
     if (terminal && run.terminalSeen) {
-      run.finished = true;
-      run.button.textContent = ({ succeeded: "已完成", failed: "执行失败", cancelled: "已取消" })[latest.status];
+      finishTaskView(run, latest.status);
       return;
     }
     // State and events are separate reads: completion can happen between them.
     run.button.textContent = terminal ? "同步最终结果…" : "执行中…";
     setTimeout(() => pollTask(run), 900);
   } catch (error) {
+    if (run.epoch !== undefined && run.epoch !== state.accountEpoch) return;
     run.failures = (run.failures || 0) + 1;
     run.button.textContent = "连接中断，正在重试…";
     if (run.failures === 1 && state.currentWorkspace?.id === run.workspaceId) showError(error);
@@ -378,7 +477,7 @@ document.querySelectorAll("[data-settings-tab]").forEach((button) => {
 document.querySelectorAll("[data-view]").forEach((item) => item.onclick = () => setView(item.dataset.view)); document.querySelectorAll("[data-panel]").forEach((item) => item.onclick = () => { if (item.dataset.panel) switchPanel(item.dataset.panel); }); document.querySelectorAll("[data-quick]").forEach((item) => item.onclick = () => { $("quick-chat").value = item.dataset.quick; $("quick-chat").focus(); }); document.querySelectorAll("[data-suggest]").forEach((item) => item.onclick = () => { $("project-input").value = item.dataset.suggest; sendProjectMessage(); });
 $("sidebar-toggle").onclick = () => $("app-shell").classList.toggle("sidebar-collapsed"); $("focus-toggle").onclick = () => $("app-shell").classList.toggle("context-hidden"); $("toggle-context").onclick = () => $("app-shell").classList.toggle("context-hidden"); $("context-close").onclick = () => $("app-shell").classList.add("context-hidden"); $("new-project").onclick = openNewProject; $("home-add-project").onclick = openNewProject; $("empty-add-project").onclick = openNewProject; $("close-new-project").onclick = closeNewProject; $("create-project").onclick = createWorkspace; $("project-send").onclick = sendProjectMessage; $("free-send").onclick = sendFreeMessage; $("refresh-explorer").onclick = loadExplorer; $("review-design").onclick = () => reviewProjectDesign(); $("close-preview").onclick = () => $("file-preview").classList.add("hidden"); $("run-command").onclick = () => runCommand(); $("start-service").onclick = () => startService(); $("stop-services").onclick = stopServices; $("generate-doc").onclick = () => generateDocument(); $("save-settings").onclick = saveSettings; $("reindex-project").onclick = reindexProject; $("project-settings-btn").onclick = () => switchPanel("settings"); $("quick-send").onclick = () => { setView("free-chat"); $("free-input").value = $("quick-chat").value; sendFreeMessage(); };
 $("global-settings").onclick = () => { setView("global-settings"); loadGlobalSettings(); }; $("save-global-settings").onclick = () => saveGlobalSettings(false); $("clear-api-key").onclick = () => { if (window.confirm("确认清除本机保存的 API Key？")) saveGlobalSettings(true); };
-$("auth-form").onsubmit = submitAuth; $("auth-switch").onclick = () => showAuth(state.authMode === "login" ? "register" : "login"); $("logout-btn").onclick = async () => { try { await api("/api/auth/logout", { method: "POST", body: "{}" }); } finally { showAuth("login"); } }; $("save-account-model").onclick = saveAccountModel; $("add-admin-model").onclick = addAdminModel;
+$("auth-form").onsubmit = submitAuth; $("auth-switch").onclick = () => showAuth(state.authMode === "login" ? "register" : "login"); $("logout-btn").onclick = async () => { try { await api("/api/auth/logout", { method: "POST", body: "{}" }); } finally { resetConversations(); state.user = null; showAuth("login"); } }; $("save-account-model").onclick = saveAccountModel; $("add-admin-model").onclick = addAdminModel;
 $("project-input").addEventListener("keydown", (event) => { if ((event.metaKey || event.ctrlKey) && event.key === "Enter") sendProjectMessage(); }); $("free-input").addEventListener("keydown", (event) => { if ((event.metaKey || event.ctrlKey) && event.key === "Enter") sendFreeMessage(); });
 
 api("/api/health").then(async () => { $("health").innerHTML = "<i></i>在线"; try { await loadAccount(); hideAuth(); await loadWorkspaces(); } catch (error) { if (!error.authRequired) showError(error); } }).catch(() => { $("health").innerHTML = "<i style='background:#c86f62'></i>离线"; });

@@ -304,3 +304,109 @@ console.log('PASS: project session isolation, delayed create/approval/output/set
   assert.equal(app.run('run.finished'), true);
 }
 console.log('PASS: persistent generation feedback, visible reply/approval with absent thoughts, failure isolation and actual execution results');
+
+// Completing one task collapses its details, including detached nodes, only.
+for (const status of ['succeeded', 'failed', 'cancelled']) {
+  const app = await ready();
+  app.run(`globalThis.ownDetail = {open:true}; globalThis.otherDetail = {open:true};
+    projectSession('A').messages.push({dataset:{taskId:'task-1'}, innerHTML:'own detail', querySelectorAll:()=>[ownDetail]},
+      {dataset:{taskId:'task-2'}, innerHTML:'other detail', querySelectorAll:()=>[otherDetail]});
+    globalThis.run = {taskId:'task-1',workspaceId:'A',after:0,button:{}};`);
+  await app.open('B');
+  app.route = path => path.includes('/events') ? ok({items:[{sequence:1,type:`task.${status}`,payload:{}}]})
+    : path === '/api/tasks/task-1' ? ok({id:'task-1',status}) : undefined;
+  await app.run('pollTask(run)');
+  assert.equal(app.run('ownDetail.open'),false);
+  assert.equal(app.run('otherDetail.open'),true);
+}
+
+// Restoring a completed conversation is read-only and replays its results once.
+{
+  const app = await ready();
+  app.route = path => path.startsWith('/api/conversations') ? ok({items:[{
+    id:'turn-saved', goal:'saved question', status:'succeeded',
+    task:{id:'task-saved',workspace_id:'A',summary:'saved <answer>',status:'succeeded',patches:[]},
+    events:[{sequence:1,type:'file.changed',payload:{path:'saved.py'}},
+      {sequence:2,type:'task.succeeded',payload:{message:'saved completion'}}]
+  }]}) : undefined;
+  await app.run('loadConversation("A",true)');
+  assert.ok(app.visible().includes('saved question'));
+  assert.ok(app.visible().includes('saved &lt;answer&gt;'));
+  assert.ok(app.visible().includes('saved.py'));
+  const card=app.node('project-messages').children.find(n=>n.button);
+  assert.equal(card.button.disabled,true);
+  assert.equal(card.button.textContent,'已完成');
+  await card.button.onclick();
+  await app.run('loadConversation("A",true)');
+  assert.equal(app.visible().split('saved completion').length-1,1);
+  assert.equal(app.requests.filter(r=>r.path.endsWith('/approve')).length,0);
+}
+
+// Pending approvals remain usable after reload; running tasks resume polling.
+for (const status of ['created','executing']) {
+  const app=await ready();
+  app.route=path=>path.startsWith('/api/conversations') ? ok({items:[{id:'turn-resume',goal:'resume me',
+    task:{id:'task-1',workspace_id:'A',summary:'resume plan',status,patches:[]},events:[]}]}) : undefined;
+  await app.run('loadConversation("A",true)');
+  await tick();
+  const card=app.node('project-messages').children.find(n=>n.button);
+  if(status==='created') { assert.equal(card.button.disabled,false); await card.button.onclick(); }
+  await tick();
+  assert.ok(app.requests.some(r=>r.path.includes('/api/tasks/task-1/events')));
+  assert.equal(app.requests.filter(r=>r.path.endsWith('/approve')).length,status==='created'?1:0);
+}
+
+// A refresh while the provider is busy later resolves the same saved turn.
+{
+  const app=await ready();let generated=false;
+  app.route=path=>path.startsWith('/api/conversations') ? ok({items:[{id:'turn-wait',goal:'one question',
+    status:generated?'created':'generating',...(generated?{task:{id:'task-wait',workspace_id:'A',summary:'answer ready',status:'created'}}:{})}]}) : undefined;
+  await app.run('loadConversation("A",true)');
+  assert.ok(app.visible().includes('正在生成回复'));
+  generated=true;
+  await app.run('loadConversation("A",true)');
+  assert.equal(app.visible().split('one question').length-1,1);
+  assert.ok(app.visible().includes('answer ready'));
+}
+
+// Logout invalidates in-flight history and model responses.
+for (const operation of ['loadConversation("A",true)','createTask("late request")']) {
+  const app=await ready(),response=deferred();
+  app.route=path=>path.startsWith('/api/conversations') || path==='/api/tasks' ? response.promise : undefined;
+  const pending=app.run(operation);
+  app.run('resetConversations()');
+  response.resolve(ok({items:[{id:'old-turn',goal:'private old account',reply:'private'}],
+    id:'old-task',workspace_id:'A',summary:'private model answer'}));
+  await pending;
+  assert.equal(app.run('state.sessions.size'),0);
+  assert.equal(app.visible(),'');
+}
+
+// Free-chat messages are saved through the API and restored independently.
+{
+  const app=await ready();
+  app.route=(path,body)=>path==='/api/conversations/free'?ok({id:'free-turn',reply:'saved free reply'}):undefined;
+  app.node('free-input').value='free question';
+  await app.run('sendFreeMessage()');
+  assert.ok(app.requests.some(r=>r.path==='/api/conversations/free' && r.body.text==='free question'));
+  assert.ok(app.node('free-messages').children.some(n=>n.innerHTML.includes('saved free reply')));
+  app.run('resetConversations()');
+  app.route=path=>path.startsWith('/api/conversations')?ok({items:[{id:'free-turn',goal:'free question',reply:'saved free reply',status:'completed'}]}):undefined;
+  await app.run('loadConversation("")');
+  assert.ok(app.node('free-messages').children.some(n=>n.innerHTML.includes('free question')));
+  assert.equal(app.node('project-messages').children.length,0);
+}
+console.log('PASS: task-scoped automatic collapse, durable history restore, pending/running recovery, no re-execution, account invalidation and free-chat persistence');
+
+// A stale 401 from the old account must not lock the newly logged-in account.
+{
+  const app=await ready(),response=deferred();
+  app.run('globalThis.authPrompts=0;showAuth=()=>authPrompts++');
+  app.route=path=>path.startsWith('/api/conversations')?response.promise:undefined;
+  const pending=app.run('loadConversation("A",true)');
+  app.run('resetConversations()');
+  response.resolve({ok:false,status:401,json:async()=>({error:'old session expired'})});
+  await pending;
+  assert.equal(app.run('authPrompts'),0);
+}
+console.log('PASS: stale authentication errors cannot lock a new account');

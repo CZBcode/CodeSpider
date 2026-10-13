@@ -44,7 +44,7 @@ class TaskManager:
     def events(self, task_id: str, after: int = 0) -> List[Event]:
         return [Event(**item) for item in self.store.read("events", []) if item["task_id"] == task_id and item["sequence"] > after]
 
-    def create(self, workspace_id: str, goal: str, patches: Optional[List[Dict[str, Any]]] = None, model_id: str = "", on_model_call: Any = None, model_settings: Optional[Dict[str, Any]] = None, context_approved: bool = False) -> Task:
+    def create(self, workspace_id: str, goal: str, patches: Optional[List[Dict[str, Any]]] = None, model_id: str = "", on_model_call: Any = None, model_settings: Optional[Dict[str, Any]] = None, context_approved: bool = False, owner_id: str = "", on_generation_start: Any = None) -> Task:
         if not isinstance(goal, str) or not goal.strip():
             raise ValueError("goal cannot be empty")
         workspace = self.workspaces.get(workspace_id)
@@ -62,6 +62,7 @@ class TaskManager:
             if not response.ok:
                 raise ValueError((response.error or {}).get("message", "cannot read generation context"))
             context.update(response.data, require_patches=True)
+        conversation_turn_id = on_generation_start() if on_generation_start else ""
         turn = self._make_turn(workspace, goal, model_settings, context)
         if self.workspaces.get(workspace_id).to_dict() != workspace.to_dict():
             raise ValueError("工程设置已改变，请重新生成补丁")
@@ -70,6 +71,8 @@ class TaskManager:
         task = Task(new_id("task"), workspace_id, goal.strip(), plan=turn["steps"], patches=patches or turn.get("patches", []), thinking=turn["thinking"], tool_calls=turn.get("tool_calls", []), response_schema=turn.get("schema", "agent.turn/v1"), model_id=model_id)
         task.design = turn.get("design", {})
         task.summary = turn["summary"]
+        task.owner_id = owner_id
+        task.conversation_turn_id = conversation_turn_id
         task.design_contract = context.get("design_contract", {})
         task.design_review = turn.get("design_review", {})
         task.workspace_snapshot = workspace.to_dict()
