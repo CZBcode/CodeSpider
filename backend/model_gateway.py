@@ -54,10 +54,6 @@ class ModelGateway:
                 raise ModelContractError("model response field %s must be an array" % field)
             if len(canonical[field]) > 200:
                 raise ModelContractError("model response field %s contains too many items" % field)
-        if not canonical["thinking"]:
-            raise ModelContractError("model response thinking must contain at least one item")
-        if not canonical["steps"]:
-            raise ModelContractError("model response steps must contain at least one item")
         for item in canonical["thinking"]:
             if not all(key in item for key in ("id", "title", "summary", "status")):
                 raise ModelContractError("thinking item is missing required fields")
@@ -235,9 +231,11 @@ class ModelGateway:
 
     def plan(self, goal: str, context: Dict[str, Any], settings_override: Dict[str, Any] = None) -> Dict[str, Any]:
         settings = dict(settings_override or (self.settings._raw() if self.settings and hasattr(self.settings, "_raw") else {}))
-        if settings.get("base_url") and settings.get("api_key") and settings.get("provider") not in ("local", ""):
+        if settings.get("provider") not in ("local", "", None):
+            if not settings.get("base_url") or not settings.get("api_key"):
+                raise ModelRequestError("所选模型缺少服务地址或 API Key，请在模型设置中补全配置")
             return self._remote_plan(goal, context, settings)
-        return self.validate_turn({"schema": SCHEMA, "summary": goal, "thinking": [{"id": "understand", "title": "理解需求", "summary": "识别用户目标、工程范围和需要验证的结果", "status": "pending"}, {"id": "plan", "title": "制定步骤", "summary": "按工程类型定位代码、执行变更并运行验证", "status": "pending"}], "steps": [{"step": 1, "title": "理解工作区", "action": "code.index", "detail": "读取工程类型、文件和相关符号"}, {"step": 2, "title": "执行用户目标", "action": "workspace.apply_patch", "detail": goal}, {"step": 3, "title": "验证结果", "action": "process.run", "detail": "根据工程类型运行测试或检查命令"}], "tool_calls": [], "patches": []})
+        return self.validate_turn({"schema": SCHEMA, "summary": "当前使用本地演示模型，只能分析和验证工程，不会生成代码。请在模型设置中选择已配置的大模型。", "thinking": [{"id": "understand", "title": "理解需求", "summary": "识别用户目标、工程范围和需要验证的结果", "status": "pending"}, {"id": "plan", "title": "制定步骤", "summary": "按工程类型定位代码、执行变更并运行验证", "status": "pending"}], "steps": [{"step": 1, "title": "理解工作区", "action": "code.index", "detail": "读取工程类型、文件和相关符号"}, {"step": 2, "title": "执行用户目标", "action": "workspace.apply_patch", "detail": goal}, {"step": 3, "title": "验证结果", "action": "process.run", "detail": "根据工程类型运行测试或检查命令"}], "tool_calls": [], "patches": []})
 
     def _remote_plan(self, goal: str, context: Dict[str, Any], settings: Dict[str, Any]) -> Dict[str, Any]:
         base_url = str(settings.get("base_url", "")).rstrip("/")
@@ -284,9 +282,9 @@ class ModelGateway:
     @staticmethod
     def _system_prompt(minimal: bool = False) -> str:
         prompt = ("You are CodeSpider's code engineering agent. Return exactly one complete JSON object. "
-                "The top-level object MUST contain schema with value agent.turn/v1, summary, thinking, steps, tool_calls, patches. "
+                "The top-level object MUST contain schema with value agent.turn/v1, summary, patches. Optional thinking, steps, tool_calls are arrays. "
                 "Do not wrap it in agent, turn, data, result, Markdown fences, or commentary. "
-                "thinking contains brief work summaries, not private reasoning, using id/title/summary/status. steps use step/title/action/detail. "
+                "thinking is optional and may be empty; it contains only brief work summaries, not private reasoning, using id/title/summary/status. steps may be empty and use step/title/action/detail. summary is the user-visible response; explain proposed changes without claiming execution. "
                 "tool_calls use tool/action/arguments and must be read-only plans unless explicitly approved. "
                 "patches use path/operation; apply_patch requires replacement and either base_sha256 or exact expected; new files use operation create and replacement. "
                 "Never claim a tool ran. Use only these tool names: workspace, code, process, memory, document. "

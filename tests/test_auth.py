@@ -59,6 +59,28 @@ class AuthTests(unittest.TestCase):
         self.auth.credit(user["id"], 10)
         self.assertEqual(self.auth.user_from_token(self.auth.login("alice", "password123")[0])["balance"], 19)
 
+    def test_default_prefers_configured_authorized_model_and_preserves_selection(self):
+        admin = self.auth.register("admin", "password123")
+        user = self.auth.register("alice", "password123")
+        self.assertEqual(self.auth.selected_model(admin)["id"], "mdl_local")
+        model = self.auth.create_model({"name": "Qwen", "provider": "custom", "model": "qwen",
+                                       "base_url": "https://example.invalid/v1", "api_key": "secret"})
+        self.assertEqual(self.auth.selected_model(admin)["id"], model["id"])
+        self.assertIsNone(self.auth.selected_model(user))
+        self.auth.assign_model(user["id"], "mdl_local")
+        self.assertEqual(self.auth.selected_model(user)["id"], "mdl_local")
+        self.auth.assign_model(user["id"], model["id"])
+        self.assertEqual(self.auth.selected_model(user)["id"], model["id"])
+        self.auth.select_model(user, "mdl_local")
+        self.assertEqual(self.auth.selected_model(user)["id"], "mdl_local")
+        self.auth.update_model(model["id"], {"enabled": False})
+        self.assertEqual(self.auth.selected_model(admin)["id"], "mdl_local")
+
+    def test_incomplete_model_does_not_displace_usable_default(self):
+        admin = self.auth.register("admin", "password123")
+        self.auth.create_model({"name": "Incomplete", "provider": "custom", "model": "qwen"})
+        self.assertEqual(self.auth.selected_model(admin)["id"], "mdl_local")
+
     @unittest.skipUnless(find_h2_jar(), "H2 JDBC jar is not installed in this test environment")
     def test_h2_store_persists_accounts(self):
         path = os.path.join(self.temp.name, "h2")

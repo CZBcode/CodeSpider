@@ -171,6 +171,7 @@ async function createTask(goal) {
   const workspace = state.currentWorkspace;
   if (!workspace) return showError(new Error("请先选择工程"));
   const session = projectSession(workspace.id), generation = ++session.generation;
+  const pending = appendMessage("agent", "思考中 · 正在生成回复与代码，请稍候…", workspace.id);
   try {
     const requestTask = (contextApproved) => api("/api/tasks", { method: "POST", body: JSON.stringify({ workspace_id: workspace.id, goal, context_approved: contextApproved }) });
     let task;
@@ -183,9 +184,12 @@ async function createTask(goal) {
       session.task = task;
       if (state.currentWorkspace?.id === workspace.id) state.task = task;
     }
-    appendAgentTurn(task);
+    appendAgentTurn(task, pending);
     if (state.currentWorkspace?.id === workspace.id) switchPanel("chat");
-  } catch (error) { showError(error); }
+  } catch (error) {
+    pending.innerHTML = `<div class="message-bubble" role="alert">${escapeHtml(`生成未完成：${error.message}。请检查模型设置或重试。`)}</div>`;
+    if (state.currentWorkspace?.id === workspace.id) showError(error);
+  }
 }
 function patchPreview(task) {
   return (task.patches || []).map((patch) => `<details class="thinking-card"><summary>${escapeHtml(patch.operation || "write_file")} · ${escapeHtml(patch.path)}</summary><div class="thinking-body">${patch.expected !== undefined ? `<b>原内容</b><pre>${escapeHtml(patch.expected)}</pre>` : ""}<b>新内容</b><pre>${escapeHtml(patch.replacement ?? patch.content ?? "")}</pre></div></details>`).join("");
@@ -207,12 +211,25 @@ function appendDesignReview(event, workspaceId) {
   const message = document.createElement("div"); message.className = "message agent";
   message.innerHTML = designPreview({design_review:event.payload}); addProjectMessage(workspaceId,message);
 }
-function appendAgentTurn(task) { const message = document.createElement("div"); message.className = "message agent"; const thinking = (task.thinking || []).map((item) => `<div class="thinking-line"><b>${escapeHtml(item.title)}</b><span>${escapeHtml(item.summary)}</span></div>`).join(""); const steps = (task.plan || []).map((step) => `<div class="thinking-line"><b>${step.step}. ${escapeHtml(step.title)}</b><span>${escapeHtml(step.detail)}</span></div>`).join(""); message.innerHTML = `<details class="thinking-card"><summary><span class="thinking-label">思考中</span><span class="thinking-meta">${task.plan?.length || 0} 个步骤 · 等待确认</span></summary><div class="thinking-body">${thinking}${steps}<div class="thinking-line"><b>执行目录</b><span>${escapeHtml(task.workspace_snapshot?.root || state.workspaces.find((item) => item.id === task.workspace_id)?.root || "")}</span></div>${designPreview(task)}${patchPreview(task)}<p>批准后写入以上文件并运行工程验证；新 Vue 工程会安装依赖（禁用安装脚本）。</p><button class="approve-inline">批准执行</button></div></details>`; const button = message.querySelector(".approve-inline"); button.onclick = () => approveTask(task, button); addProjectMessage(task.workspace_id, message); }
-function appendMessage(role, text, workspaceId = state.currentWorkspace?.id) { const message = document.createElement("div"); message.className = `message ${role}`; message.innerHTML = `<div class="message-bubble">${escapeHtml(text)}</div>`; addProjectMessage(workspaceId, message); }
+function appendAgentTurn(task, existingMessage = null) {
+  const message = existingMessage || document.createElement("div");
+  message.className = "message agent";
+  const thinking = (task.thinking || []).map((item) => `<div class="thinking-line"><b>${escapeHtml(item.title)}</b><span>${escapeHtml(item.summary)}</span></div>`).join("");
+  const steps = (task.plan || []).map((step) => `<div class="thinking-line"><b>${escapeHtml(step.step)}. ${escapeHtml(step.title)}</b><span>${escapeHtml(step.detail)}</span></div>`).join("");
+  const count = task.patches?.length || 0;
+  message.innerHTML = `<div class="message-bubble">${escapeHtml(task.summary || "方案已准备好，请查看下方详情。")}</div>
+    <p class="task-status" role="status">${count ? `待确认：将修改 ${count} 个文件，批准后写入并运行验证。` : "当前方案没有代码变更；批准后仅分析和验证工程。生成代码请在设置中选择已配置的大模型。"}</p>
+    <details class="thinking-card"><summary><span class="thinking-label">方案详情</span><span class="thinking-meta">${task.plan?.length || 0} 个步骤 · ${count} 个文件</span></summary><div class="thinking-body">${thinking}${steps}<div class="thinking-line"><b>执行目录</b><span>${escapeHtml(task.workspace_snapshot?.root || state.workspaces.find((item) => item.id === task.workspace_id)?.root || "")}</span></div>${designPreview(task)}${patchPreview(task)}<p>批准后运行工程验证；新 Vue 工程会安装依赖（禁用安装脚本）。</p></div></details>
+    <button class="approve-inline">批准执行</button>`;
+  const button = message.querySelector(".approve-inline"), statusNode = message.querySelector(".task-status");
+  button.onclick = () => approveTask(task, button, statusNode);
+  if (!existingMessage) addProjectMessage(task.workspace_id, message);
+}
+function appendMessage(role, text, workspaceId = state.currentWorkspace?.id) { const message = document.createElement("div"); message.className = `message ${role}`; message.innerHTML = `<div class="message-bubble">${escapeHtml(text)}</div>`; addProjectMessage(workspaceId, message); return message; }
 async function sendProjectMessage() { const input = $("project-input"); const goal = input.value.trim(); if (!goal) return; input.value = ""; appendMessage("user", goal); await createTask(goal); }
 function sendFreeMessage() { const input = $("free-input"); const text = input.value.trim(); if (!text) return; input.value = ""; const container = $("free-messages"); const welcome = container.querySelector(".welcome-message"); if (welcome) welcome.remove(); const message = document.createElement("div"); message.className = "message user"; message.innerHTML = `<div class="message-bubble">${escapeHtml(text)}</div>`; container.appendChild(message); const answer = document.createElement("div"); answer.className = "message agent"; answer.innerHTML = `<div class="message-bubble">我可以先帮你梳理这个问题。选择一个具体工程后，我还能继续读取代码、生成补丁并运行验证。</div>`; container.appendChild(answer); container.scrollTop = container.scrollHeight; }
 
-async function approveTask(task, button) {
+async function approveTask(task, button, statusNode = null) {
   if (!task || button.disabled) return;
   if (task.workspace_id !== state.currentWorkspace?.id) return showError(new Error("请先打开这个任务所属的工程"));
   button.disabled = true;
@@ -221,15 +238,17 @@ async function approveTask(task, button) {
     const approved = await api(`/api/tasks/${task.id}/approve`, { method: "POST", body: "{}" });
     updateSessionTask(task.workspace_id, approved);
     button.textContent = "执行中…";
+    if (statusNode) statusNode.textContent = task.patches?.length ? "已批准，正在写入文件并执行验证。" : "已批准，正在分析和验证工程。";
     appendMessage("agent", "任务已批准，Agent 正在执行工程分析和验证命令。", task.workspace_id);
-    pollTask({ taskId: task.id, workspaceId: task.workspace_id, after: 0, button });
+    pollTask({ taskId: task.id, workspaceId: task.workspace_id, after: 0, button, statusNode });
   } catch (error) {
     button.disabled = false;
     button.textContent = "批准执行";
+    appendMessage("agent", `批准失败：${error.message}。可以重试。`, task.workspace_id);
     showError(error);
   }
 }
-function appendToolEvent(event, workspaceId) { const request = event.payload?.request || {}; const message = document.createElement("div"); message.className = "message agent"; message.innerHTML = `<details class="thinking-card tool-card"><summary><span class="thinking-label">思考中</span><span class="thinking-meta">调用 ${escapeHtml(request.tool || "tool")}.${escapeHtml(request.action || "call")}</span></summary><div class="thinking-body"><div class="thinking-line"><b>工具请求</b><span>${escapeHtml(JSON.stringify(request.arguments || {}))}</span></div></div></details>`; addProjectMessage(workspaceId, message); }
+function appendToolEvent(event, workspaceId) { const request = event.payload?.request || {}; const message = document.createElement("div"); message.className = "message agent"; message.innerHTML = `<details class="thinking-card tool-card"><summary><span class="thinking-label">工具调用</span><span class="thinking-meta">调用 ${escapeHtml(request.tool || "tool")}.${escapeHtml(request.action || "call")}</span></summary><div class="thinking-body"><div class="thinking-line"><b>工具请求</b><span>${escapeHtml(JSON.stringify(request.arguments || {}))}</span></div></div></details>`; addProjectMessage(workspaceId, message); }
 async function pollTask(run) {
   if (!run || run.finished) return;
   try {
@@ -237,9 +256,14 @@ async function pollTask(run) {
     for (const event of data.items) {
       if (event.sequence <= run.after) continue;
       if (event.type === "tool.call") appendToolEvent(event, run.workspaceId);
+      if (event.type === "file.changed") appendMessage("agent", `已写入文件：${event.payload.path || event.payload.relative_path || "工程文件"}`, run.workspaceId);
+      if (event.type === "process.output") appendMessage("agent", `验证命令：${event.payload.command || ""}\n退出码：${event.payload.exit_code}\n${(event.payload.output || "").slice(-12000)}`, run.workspaceId);
+      if (event.type === "agent.notice") appendMessage("agent", event.payload.message, run.workspaceId);
       if (event.type === "design.reviewed") appendDesignReview(event, run.workspaceId);
       if (["task.succeeded", "task.failed", "task.cancelled"].includes(event.type) && !run.terminalSeen) {
-        appendMessage("agent", event.payload.message || event.payload.error || event.type, run.workspaceId);
+        const result = event.payload.message || event.payload.error || ({"task.succeeded": "执行完成", "task.failed": "执行失败", "task.cancelled": "任务已取消"})[event.type];
+        appendMessage("agent", result, run.workspaceId);
+        if (run.statusNode) run.statusNode.textContent = result;
         run.terminalSeen = true;
       }
       run.after = event.sequence;

@@ -83,6 +83,23 @@ class ModelGatewayTests(unittest.TestCase):
         self.assertEqual(turn["patches"][0]["operation"], "apply_patch")
         self.assertEqual(turn["patches"][0]["path"], "main.py")
 
+    def test_missing_thoughts_and_steps_do_not_block_valid_code(self):
+        turn = ModelGateway.validate_turn({"summary": "Ready for approval", "patches": [
+            {"path": "main.py", "operation": "create", "replacement": "answer = 42\n"}]})
+        ModelGateway.validate_generation(turn, {"files": {}})
+        self.assertEqual(turn["thinking"], [])
+        self.assertEqual(turn["steps"], [])
+        with self.assertRaises(ValueError):
+            ModelGateway.validate_generation(ModelGateway.validate_turn({"summary": "No changes"}), {"files": {}})
+
+    def test_incomplete_remote_model_never_falls_back_to_demo(self):
+        from backend.model_gateway import ModelRequestError
+        for missing in ("base_url", "api_key"):
+            settings = {"provider": "custom", "model": "qwen", "base_url": "https://example.invalid", "api_key": "secret"}
+            settings.pop(missing)
+            with self.assertRaises(ModelRequestError):
+                ModelGateway().plan("Generate code", {}, settings_override=settings)
+
     def test_normalizes_string_response_wrapper_and_schema_alias(self):
         wrapped = {"response": json.dumps({
             "type": "agent.turn/v1", "summary": "wrapped", "thinking": ["read"],
@@ -94,7 +111,7 @@ class ModelGatewayTests(unittest.TestCase):
 
     def test_retries_with_contract_repair_after_malformed_response(self):
         _ModelHandler.requests = []
-        _ModelHandler.responses = ["{\"agent\": {\"turn\": \"v1\"}, \"summary\": \"bad\"}", json.dumps({
+        _ModelHandler.responses = ["{\"agent\": {\"turn\": \"v1\"}, \"summary\": \"\"}", json.dumps({
             "schema": "agent.turn/v1", "summary": "repaired",
             "thinking": [{"id": "t", "title": "理解", "summary": "ok", "status": "pending"}],
             "steps": [{"step": 1, "title": "检查", "action": "index", "detail": "ok"}],

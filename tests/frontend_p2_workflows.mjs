@@ -247,3 +247,60 @@ for (const [operation, action, target, result] of [
   assert.equal(stops[0].body.workspace_id, 'A');
 }
 console.log('PASS: project session isolation, delayed create/approval/output/settings, completion races for 3 terminal states, network retries, event deduplication and original service target');
+
+// A slow model must leave feedback in the originating project and then expose
+// both its answer and the approval control outside every collapsed details.
+{
+  const app = await ready(), response = deferred();
+  app.route = path => path === '/api/tasks' ? response.promise : undefined;
+  const pending = app.run('createTask("generate a module")');
+  assert.ok(app.visible().includes('正在生成回复与代码'));
+  assert.ok(!app.visible().includes('approve-inline'));
+  response.resolve(ok({id: 'task-chat', workspace_id: 'A', summary: 'Prepared <module>',
+    thinking: [], plan: [], patches: [{path: 'main.py', operation: 'create', replacement: 'x = 1'}]}));
+  await pending;
+  const html = app.visible();
+  assert.ok(html.includes('Prepared &lt;module&gt;'));
+  assert.ok(!html.includes('正在生成回复与代码'));
+  let depth = 0, found = false;
+  for (const match of html.matchAll(/<details\b[^>]*>|<\/details>|<button\b[^>]*>/g)) {
+    if (match[0].startsWith('<details')) depth++;
+    else if (match[0] === '</details>') depth--;
+    else if (match[0].includes('approve-inline')) { assert.equal(depth, 0); found = true; }
+  }
+  assert.ok(found, 'approval must remain visible when every detail is collapsed');
+  assert.ok(html.indexOf('Prepared &lt;module&gt;') < html.indexOf('<details'));
+  assert.equal(app.requests.filter(r => r.path.endsWith('/approve')).length, 0);
+}
+
+// Generation failure is persistent, belongs to A and cannot erase B's chat.
+{
+  const app = await ready(), response = deferred();
+  app.route = path => path === '/api/tasks' ? response.promise : undefined;
+  const pending = app.run('createTask("generate")');
+  await app.open('B');
+  response.reject(new Error('model unavailable'));
+  await pending;
+  assert.equal(app.visible(), '');
+  await app.open('A');
+  assert.ok(app.visible().includes('生成未完成：model unavailable'));
+  assert.ok(!app.visible().includes('正在生成回复与代码'));
+}
+
+// Execution effects and validation output are visible and replay-safe.
+{
+  const app = await ready();
+  app.route = path => path.includes('/events') ? ok({items: [
+    {sequence: 1, type: 'file.changed', payload: {path: 'main.py'}},
+    {sequence: 2, type: 'process.output', payload: {command: 'python3 -m unittest', exit_code: 0, output: 'Ran 1 test <ok>'}},
+    {sequence: 3, type: 'task.succeeded', payload: {message: '文件修改已完成，验证命令通过。'}}
+  ]}) : undefined;
+  app.run('globalThis.run = {taskId: "task-1", workspaceId: "A", after: 0, button: {}, statusNode: {}}');
+  await app.run('pollTask(run)');
+  assert.ok(app.visible().includes('已写入文件：main.py'));
+  assert.ok(app.visible().includes('Ran 1 test &lt;ok&gt;'));
+  assert.equal(app.run('run.statusNode.textContent'), '文件修改已完成，验证命令通过。');
+  assert.equal(app.run('run.button.textContent'), '已完成');
+  assert.equal(app.run('run.finished'), true);
+}
+console.log('PASS: persistent generation feedback, visible reply/approval with absent thoughts, failure isolation and actual execution results');

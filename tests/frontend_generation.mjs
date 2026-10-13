@@ -4,7 +4,7 @@ import vm from 'node:vm';
 const source=await fs.readFile(new URL('../frontend/app.js',import.meta.url),'utf8');
 const nodes=new Map(),requests=[];
 let consent=false;
-function element(){return {value:'',innerHTML:'',textContent:'',dataset:{},classList:{add(){},remove(){},toggle(){}},addEventListener(){},focus(){},querySelector(){return null;},appendChild(){}};}
+function element(){return {value:'',innerHTML:'',textContent:'',dataset:{},classList:{add(){},remove(){},toggle(){}},addEventListener(){},focus(){},querySelector(){return null;},appendChild(){},replaceChildren(){}};}
 const context=vm.createContext({document:{getElementById(id){if(!nodes.has(id))nodes.set(id,element());return nodes.get(id);},querySelectorAll(){return [];},createElement:element},window:{confirm(){return consent;}},setTimeout(){return 1;},clearTimeout(){},fetch:async(path,options={})=>{
  const body=options.body?JSON.parse(options.body):null;
  if(path==='/api/tasks'){

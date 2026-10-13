@@ -2,8 +2,8 @@ from typing import Any, Dict
 
 
 DEFAULT_MODEL_SETTINGS = {
-    "provider": "openai",
-    "model": "gpt-4.1-mini",
+    "provider": "local",
+    "model": "deterministic-mvp",
     "base_url": "",
     "api_key": "",
     "temperature": 0.2,
@@ -54,4 +54,3 @@ class SettingsService:
             current["api_key"] = str(payload["api_key"]).strip()
         self.store.write("settings", current)
         return self.public()
-

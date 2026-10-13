@@ -165,7 +165,15 @@ class AuthService:
     def selected_model(self, user: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         available = self.list_models(user)
         selected = user.get("selected_model_id")
-        return next((item for item in available if item["id"] == selected), available[0] if available else None)
+        explicit = next((item for item in available if item["id"] == selected), None)
+        if explicit:
+            return explicit
+        # Registration predates model setup. Prefer a usable assigned provider
+        # over the bootstrap demo, without overriding an explicit selection.
+        configured = next((item for item in available
+                           if item.get("provider") not in ("local", "", None)
+                           and item.get("base_url") and item.get("api_key_set")), None)
+        return configured or (available[0] if available else None)
 
     def model_config(self, user: Dict[str, Any], model_id: str) -> Dict[str, Any]:
         """Return the selected model's private provider settings after access checks."""

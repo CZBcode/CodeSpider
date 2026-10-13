@@ -69,12 +69,13 @@ class TaskManager:
             on_model_call()
         task = Task(new_id("task"), workspace_id, goal.strip(), plan=turn["steps"], patches=patches or turn.get("patches", []), thinking=turn["thinking"], tool_calls=turn.get("tool_calls", []), response_schema=turn.get("schema", "agent.turn/v1"), model_id=model_id)
         task.design = turn.get("design", {})
+        task.summary = turn["summary"]
         task.design_contract = context.get("design_contract", {})
         task.design_review = turn.get("design_review", {})
         task.workspace_snapshot = workspace.to_dict()
         self._save_task(task)
         self._emit(task.id, "task.created", {"goal": task.goal})
-        self._emit(task.id, "task.plan_ready", {"schema": task.response_schema, "thinking": task.thinking, "steps": task.plan, "tool_calls": task.tool_calls})
+        self._emit(task.id, "task.plan_ready", {"schema": task.response_schema, "summary": task.summary, "thinking": task.thinking, "steps": task.plan, "tool_calls": task.tool_calls})
         return task
 
     def _make_turn(self, workspace: Any, goal: str, model_settings: Optional[Dict[str, Any]] = None, context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
