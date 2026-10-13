@@ -181,6 +181,54 @@ function closeNewProject() { $("new-project-form").classList.add("hidden"); }
 async function createWorkspace() { try { const workspace = await api("/api/workspaces", { method: "POST", body: JSON.stringify({ root: $("project-root").value, name: $("project-name").value }) }); closeNewProject(); await loadWorkspaces(); await openWorkspace(workspace.id); showToast("工程已添加"); } catch (error) { showError(error); } }
 
 function switchPanel(panel) { state.currentPanel = panel; document.querySelectorAll(".project-nav-item").forEach((item) => item.classList.toggle("active", item.dataset.panel === panel)); document.querySelectorAll(".panel-view").forEach((item) => item.classList.remove("active-panel")); const target = $(`${panel}-panel`); if (target) target.classList.add("active-panel"); if (panel === "explorer") loadExplorer(); if (panel === "terminal") listProcesses(); if (panel === "settings") fillSettings(); }
+function renderFileTree(items, workspace) {
+  const session = projectSession(workspace.id), container = $("file-tree");
+  if (session.treeRoot !== workspace.root) {
+    session.treeRoot = workspace.root;
+    session.folderOpen = new Map();
+    session.selectedFile = "";
+  }
+  const root = new Map();
+  for (const item of items) {
+    const parts = item.path.split("/").filter(Boolean);
+    let children = root;
+    parts.forEach((name, index) => {
+      const folder = index < parts.length - 1 || item.kind === "directory";
+      if (!children.has(name)) children.set(name, {name, path: parts.slice(0, index + 1).join("/"), folder, children: new Map()});
+      children = children.get(name).children;
+    });
+  }
+  const folderIcon = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M1.5 4V2.5h5l1.5 2h6.5v9h-13Z"/></svg>';
+  const fileIcon = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 1.5h5l4 4v9h-9Z"/><path d="M8.5 1.5v4h4"/></svg>';
+  function branch(nodes, depth = 0) {
+    return [...nodes.values()].sort((a, b) => Number(b.folder) - Number(a.folder) || a.name.localeCompare(b.name, undefined, {numeric: true, sensitivity: "base"})).map(node => {
+      if (node.folder) {
+        const open = session.folderOpen.get(node.path) ?? depth === 0;
+        return `<li><details class="file-folder" data-folder="${escapeHtml(node.path)}" ${open ? "open" : ""}><summary title="${escapeHtml(node.path)}">${folderIcon}<span class="tree-name">${escapeHtml(node.name)}</span></summary><ul class="tree-children">${branch(node.children, depth + 1)}</ul></details></li>`;
+      }
+      return `<li><button class="file-row tree-file${session.selectedFile === node.path ? " selected" : ""}" data-file="${escapeHtml(node.path)}" title="${escapeHtml(node.path)}" aria-current="${session.selectedFile === node.path}">${fileIcon}<span class="tree-name">${escapeHtml(node.name)}</span></button></li>`;
+    }).join("");
+  }
+  container.innerHTML = `<div class="tree-toolbar"><span class="tree-root" title="${escapeHtml(workspace.root)}">${folderIcon}<b>${escapeHtml(workspace.name)}</b></span><span class="tree-actions"><button type="button" data-tree-action="expand" title="展开所有目录">展开</button><button type="button" data-tree-action="collapse" title="折叠所有目录">折叠</button></span></div><ul class="tree-branches">${branch(root)}</ul>${root.size ? "" : '<p class="tree-empty">工程中暂无可展示的文件</p>'}`;
+  const folders = [...(container.querySelectorAll?.("[data-folder]") || [])];
+  for (const folder of folders) folder.ontoggle = () => session.folderOpen.set(folder.dataset.folder, folder.open);
+  for (const action of container.querySelectorAll?.("[data-tree-action]") || []) action.onclick = () => {
+    for (const folder of folders) {
+      folder.open = action.dataset.treeAction === "expand";
+      session.folderOpen.set(folder.dataset.folder, folder.open);
+    }
+  };
+  for (const button of container.querySelectorAll?.("[data-file]") || []) button.onclick = () => {
+    if (state.currentWorkspace !== workspace) return;
+    session.selectedFile = button.dataset.file;
+    for (const file of container.querySelectorAll("[data-file]")) {
+      const selected = file === button;
+      file.classList.toggle("selected", selected);
+      file.setAttribute("aria-current", String(selected));
+    }
+    return previewFile(button.dataset.file, false, workspace);
+  };
+}
 async function loadExplorer() {
   const workspace = state.currentWorkspace;
   if (!workspace) return;
@@ -195,8 +243,7 @@ async function loadExplorer() {
     if (state.currentWorkspace !== workspace) return;
     const tree = await callTool("workspace", "list_tree", workspace.id, { limit: 1000 });
     if (state.currentWorkspace !== workspace) return;
-    $("file-tree").innerHTML = tree.items.map((item) => `<div class="file-row" data-file="${escapeHtml(item.path)}"><span class="file-glyph">□</span>${escapeHtml(item.path)}</div>`).join("") || `<span class="muted">没有可展示的文件</span>`;
-    document.querySelectorAll("[data-file]").forEach((item) => item.onclick = () => previewFile(item.dataset.file));
+    renderFileTree(tree.items, workspace);
     $("symbol-list").innerHTML = symbols.items.map((item) => `<div class="symbol-row"><span>${escapeHtml(item.kind)}</span><b>${escapeHtml(item.name)}</b><small>${escapeHtml(item.path)}:${item.line}</small></div>`).join("") || `<span class="muted">暂无符号索引</span>`;
     $("symbol-count").textContent = `${symbols.items.length} 个符号`;
   } catch (error) { if (state.currentWorkspace === workspace) showError(error); }
