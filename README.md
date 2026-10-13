@@ -142,3 +142,11 @@ python3 benchmarks/run_adversarial.py \
 ```
 
 runner 默认关闭供应商隐藏思考以提高批测吞吐，但仍强制检查 `thinking[]`、步骤、工具调用和补丁结构；需要测试开启隐藏思考时增加 `--enable-thinking`。每个用例独立超时，报告会区分超时、上游错误、JSON 契约失败和安全语义缺失。
+
+## 实际工程生成验证
+
+可运行示例见 [examples/README.md](examples/README.md)，包括 Python 金额计算、已有代码修复、Spring Boot JSON 接口和 Vue 计数器。四例均经过真实模型生成、审批写入、构建/测试及独立验收；首轮依赖环境失败及补丁重放结果见 [实测报告](docs/generation-validation.md)。
+
+远端生成任务会先收集受控文件上下文和符号，安全模式先询问读取授权。已有文件使用完整 expected 校验，新文件使用独占创建；审批卡展示修改内容。生成契约恢复必须保留非空代码补丁，不能通过仅返回计划宣告生成成功。Python 执行 unittest、Java 执行 Maven test、Vue 校准依赖并执行构建和 test 脚本。未发现 Python 测试时会说明只检查语法。
+
+使用 `python3 benchmarks/run_generation.py --output /tmp/codespider-generation-new --execute` 进行端到端实测（模型环境变量同上）；支持 `--case` 单例和 `--replay` 重放。此 runner 会执行生成代码，应使用受控的一次性环境。

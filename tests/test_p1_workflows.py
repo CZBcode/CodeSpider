@@ -133,7 +133,7 @@ class P1WorkflowTests(unittest.TestCase):
                 tasks.append(task)
                 self.context.tasks.approve(task.id)
             self.context.tasks.executor.shutdown(wait=True)
-        self.assertCountEqual(commands, ['mvn -q -DskipTests compile', 'npm run build'])
+        self.assertCountEqual(commands, ['mvn -q test', 'npm install --ignore-scripts --no-audit --no-fund', 'npm run build'])
         self.assertTrue(all(self.context.tasks.get(t.id).status == 'succeeded' for t in tasks))
 
 

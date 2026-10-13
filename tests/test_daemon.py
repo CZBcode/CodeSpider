@@ -98,6 +98,14 @@ class DaemonTests(unittest.TestCase):
         payload['approval'] = {'approved': True}
         self.assertTrue(self.api('/api/tools/call', payload)['ok'])
         self.assertEqual((self.project / 'hello.py').read_text(), 'print("hello")\n')
+        context_call = {'tool': 'code', 'action': 'context', 'workspace_id': workspace, 'arguments': {'goal': 'hello'}}
+        self.api('/api/tools/call', context_call, 409)
+        context_call['approval'] = {'approved': True}
+        self.assertEqual(self.api('/api/tools/call', context_call)['data']['files']['hello.py'], 'print("hello")\n')
+        create_call = {'tool': 'workspace', 'action': 'create_file', 'workspace_id': workspace,
+                       'arguments': {'path': 'created.py', 'content': 'answer=42\n'}, 'approval': {'approved': True}}
+        self.assertTrue(self.api('/api/tools/call', create_call)['ok'])
+        self.assertFalse(self.api('/api/tools/call', create_call, 400)['ok'])
         command = shlex.quote(sys.executable) + ' -c "import os; print(os.getppid())"'
         result = self.api('/api/workspaces/' + workspace + '/run', {'command': command, 'approved': True})
         self.assertEqual(int(result['output'].strip()), health['agent']['pid'])

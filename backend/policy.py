@@ -28,7 +28,7 @@ class WorkspacePolicy:
 
     MODES = ("safe", "divergent")
 
-    def __init__(self, root: str, ignored: Iterable[str] = (".git", ".codespider"), mode: str = "safe", command_allowlist: Iterable[str] = ()):
+    def __init__(self, root: str, ignored: Iterable[str] = (".git", ".codespider", ".venv", "venv", "node_modules", "target", "dist", "__pycache__"), mode: str = "safe", command_allowlist: Iterable[str] = ()):
         self.root = os.path.realpath(root)
         self.ignored = tuple(ignored)
         self.mode = mode if mode in self.MODES else "safe"
@@ -55,7 +55,7 @@ class WorkspacePolicy:
         """
         target = self.resolve(relative_path)
         parts = os.path.relpath(target, self.root).split(os.sep)
-        if parts == ["."] or mode not in ("r", "rb", "w", "r+"):
+        if parts == ["."] or mode not in ("r", "rb", "w", "r+", "x"):
             raise PolicyError("invalid file operation")
         directory = os.open(self.root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
         try:
@@ -69,6 +69,8 @@ class WorkspacePolicy:
                 os.close(directory)
                 directory = child
             flags = os.O_RDONLY if mode in ("r", "rb") else (os.O_RDWR if mode == "r+" else os.O_WRONLY | os.O_CREAT)
+            if mode == "x":
+                flags |= os.O_EXCL
             descriptor = os.open(parts[-1], flags | os.O_NOFOLLOW, 0o666, dir_fd=directory)
             with os.fdopen(descriptor, mode, **({"encoding": "utf-8"} if mode != "rb" else {})) as handle:
                 # Never truncate before acquiring the lock. All tools use the

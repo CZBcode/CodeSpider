@@ -1,0 +1,160 @@
+{
+  "model": "qwen3.8-max",
+  "live_generation": {
+    "model": "qwen3.8-max",
+    "evaluation": "executed-generation-v1",
+    "results": [
+      {
+        "id": "python-cart",
+        "passed": true,
+        "model": "qwen3.8-max",
+        "goal": "创建完整可运行工程。使用 Python 3.9 标准库实现 cart.py 的 total_cents(prices: list[str], discount: str=\"0\") -> int。十进制单价求和、应用百分比折扣后，最终按 ROUND_HALF_UP 到分。拒绝负数、NaN、Infinity、非法数字和0..100以外折扣，统一抛 ValueError。生成 test_cart.py 的 unittest 回归测试。0.10+0.20=30分，1.005=101分，10元折扣12.5%=875分。",
+        "patch_count": 2,
+        "task_status": "succeeded",
+        "acceptance_exit_code": 0,
+        "seconds": 22.86,
+        "files": {
+          "cart.py": "0499fd0631094131ecc81a702bf6507459c9e7eaf27c0043554c96a9e92608e0",
+          "test_cart.py": "6812984282d8e9b5ec9c7ae6ec8e294e95af4f79971dfc2879b294eec783dbb9",
+          "acceptance_cart.py": "cfdfe8b01dfb8718553737c48a959a8c6068d786a66fa62a6d8f5666be21ff44"
+        }
+      },
+      {
+        "id": "python-repair",
+        "passed": true,
+        "model": "qwen3.8-max",
+        "goal": "修复现有 cart.py 的浮点精度错误。必须保留模块文档、LABEL 常量及 currency contract v1 注释。使用 Python 3.9 标准库实现 cart.py 的 total_cents(prices: list[str], discount: str=\"0\") -> int。十进制单价求和、应用百分比折扣后，最终按 ROUND_HALF_UP 到分。拒绝负数、NaN、Infinity、非法数字和0..100以外折扣，统一抛 ValueError。生成 test_cart.py 的 unittest 回归测试。0.10+0.20=30分，1.005=101分，10元折扣12.5%=875分。",
+        "patch_count": 2,
+        "task_status": "succeeded",
+        "acceptance_exit_code": 0,
+        "seconds": 70.42,
+        "files": {
+          "cart.py": "c00f7dd175e9be12f18ca6468b73c60bf33a280f012ac3cc19736425b489e9b7",
+          "test_cart.py": "3a717d72f8d6bb4cd2b4f3466a4d07ef0438de88fcdb7171011f972b6942764f",
+          "acceptance_cart.py": "cfdfe8b01dfb8718553737c48a959a8c6068d786a66fa62a6d8f5666be21ff44"
+        }
+      },
+      {
+        "id": "spring-greeting",
+        "passed": false,
+        "model": "qwen3.8-max",
+        "goal": "生成最小可运行的 Spring Boot 3.4.4 Maven 工程，Java release 17，包 example，入口类 example.Application。提供 GET /api/greet?name=Ada，返回 JSON {\"message\":\"Hello, Ada!\"}。name 两边空格要trim，未传或全空白默认 world。输入含HTML字符也作为普通 JSON 字符串数据。用显式 @RequestParam(name=\"name\",defaultValue=\"world\")。必须含 pom.xml、入口和控制器以及 JUnit5 MockMvc 单测，可执行 mvn test。不使用数据库、Lombok。",
+        "patch_count": 4,
+        "task_status": "failed",
+        "error": "command timed out after 180s: mvn -q test",
+        "seconds": 207.69,
+        "files": {
+          "pom.xml": "c81a29763c1f9e07e406383594fdf4d0cc7c26aa0c88ddf9340ee37524862bfc",
+          "src/test/java/example/GreetControllerTest.java": "75d43a2b2ba5a563f84dacb8c3dc178518c6261d6afdc867e2418b3543d98039",
+          "src/main/java/example/GreetController.java": "f1b7565cb5787a8d442a93b8fd016f93f78991a091860fd20a8183ddaa708936",
+          "src/main/java/example/Application.java": "f0062b1e8e3956a36b15e8a923192b1be75655cfe6be14e8096a319e74899d25"
+        }
+      },
+      {
+        "id": "vue-counter",
+        "passed": false,
+        "model": "qwen3.8-max",
+        "goal": "生成完整可运行的 Vue 3 工程，使用 JavaScript/Vite5，不要TypeScript。入口 index.html、src/main.js、src/App.vue。App.vue 实现非负计数器，初始0，增加、减少、重置按钮，不能减到负数。计数值元素 data-testid=count，按钮分别 data-testid=increment/decrement/reset。依赖vue3、vite5、@vitejs/plugin-vue5、vitest2、@vue/test-utils2、jsdom25，使用兼容的确切版本号。提供vite.config.js，设置vitest environment为jsdom；package.json脚本build为vite build，test为vitest run。包含 Vitest 组件交互测试，可执行 npm run build 和 npm test。",
+        "patch_count": 6,
+        "task_status": "failed",
+        "error": "command timed out after 180s: npm install --ignore-scripts --no-audit --no-fund",
+        "seconds": 204.99,
+        "files": {
+          "index.html": "3bc6bb23a2fd69cf690ffd5f904659b7b952287a315cd758b94cc47998ee715a",
+          "vite.config.js": "1db7fc83004107680f5d507e5bcc7770614319b61cc131ab0a633d292d797d31",
+          "package.json": "30e193896147d171200742649893fbe35c6be87ccb96e99ad7b8347dfeb4f8f4",
+          "src/App.vue": "f29348c68158346de3e80d6dccf59c6df050b90b722b31bf985a9637fa25da0a",
+          "src/main.js": "50cb9f18b1c7115799ae456f0d0038840278b49ea520b5549d468ec76c248fb9",
+          "src/App.spec.js": "214dc60cef92e5094ebcead2600a7dd0cf081e57719759f3cbc30db134864387"
+        }
+      }
+    ],
+    "passed": 2,
+    "total": 4
+  },
+  "final_replay": {
+    "model": "qwen3.8-max",
+    "evaluation": "executed-generation-v1",
+    "results": [
+      {
+        "id": "python-cart",
+        "passed": true,
+        "model": "qwen3.8-max",
+        "goal": "创建完整可运行工程。使用 Python 3.9 标准库实现 cart.py 的 total_cents(prices: list[str], discount: str=\"0\") -> int。十进制单价求和、应用百分比折扣后，最终按 ROUND_HALF_UP 到分。拒绝负数、NaN、Infinity、非法数字和0..100以外折扣，统一抛 ValueError。生成 test_cart.py 的 unittest 回归测试。0.10+0.20=30分，1.005=101分，10元折扣12.5%=875分。",
+        "generation_source": "saved_model_patches",
+        "patch_count": 2,
+        "task_status": "succeeded",
+        "acceptance_exit_code": 0,
+        "seconds": 0.16,
+        "files": {
+          "cart.py": "0499fd0631094131ecc81a702bf6507459c9e7eaf27c0043554c96a9e92608e0",
+          "test_cart.py": "6812984282d8e9b5ec9c7ae6ec8e294e95af4f79971dfc2879b294eec783dbb9",
+          "acceptance_cart.py": "cfdfe8b01dfb8718553737c48a959a8c6068d786a66fa62a6d8f5666be21ff44"
+        }
+      },
+      {
+        "id": "python-repair",
+        "passed": true,
+        "model": "qwen3.8-max",
+        "goal": "修复现有 cart.py 的浮点精度错误。必须保留模块文档、LABEL 常量及 currency contract v1 注释。使用 Python 3.9 标准库实现 cart.py 的 total_cents(prices: list[str], discount: str=\"0\") -> int。十进制单价求和、应用百分比折扣后，最终按 ROUND_HALF_UP 到分。拒绝负数、NaN、Infinity、非法数字和0..100以外折扣，统一抛 ValueError。生成 test_cart.py 的 unittest 回归测试。0.10+0.20=30分，1.005=101分，10元折扣12.5%=875分。",
+        "generation_source": "saved_model_patches",
+        "patch_count": 2,
+        "task_status": "succeeded",
+        "acceptance_exit_code": 0,
+        "seconds": 0.14,
+        "files": {
+          "cart.py": "c00f7dd175e9be12f18ca6468b73c60bf33a280f012ac3cc19736425b489e9b7",
+          "test_cart.py": "3a717d72f8d6bb4cd2b4f3466a4d07ef0438de88fcdb7171011f972b6942764f",
+          "acceptance_cart.py": "cfdfe8b01dfb8718553737c48a959a8c6068d786a66fa62a6d8f5666be21ff44"
+        }
+      },
+      {
+        "id": "spring-greeting",
+        "passed": true,
+        "model": "qwen3.8-max",
+        "goal": "生成最小可运行的 Spring Boot 3.4.4 Maven 工程，Java release 17，包 example，入口类 example.Application。提供 GET /api/greet?name=Ada，返回 JSON {\"message\":\"Hello, Ada!\"}。name 两边空格要trim，未传或全空白默认 world。输入含HTML字符也作为普通 JSON 字符串数据。用显式 @RequestParam(name=\"name\",defaultValue=\"world\")。必须含 pom.xml、入口和控制器以及 JUnit5 MockMvc 单测，可执行 mvn test。不使用数据库、Lombok。",
+        "generation_source": "saved_model_patches",
+        "patch_count": 4,
+        "task_status": "succeeded",
+        "acceptance_exit_code": 0,
+        "seconds": 6.83,
+        "files": {
+          "pom.xml": "c81a29763c1f9e07e406383594fdf4d0cc7c26aa0c88ddf9340ee37524862bfc",
+          "src/test/java/example/AcceptanceTest.java": "7a3929893f1ebb8add771eed23b309585ab416957b2b42cbe16bfb2477234b30",
+          "src/test/java/example/GreetControllerTest.java": "75d43a2b2ba5a563f84dacb8c3dc178518c6261d6afdc867e2418b3543d98039",
+          "src/main/java/example/GreetController.java": "f1b7565cb5787a8d442a93b8fd016f93f78991a091860fd20a8183ddaa708936",
+          "src/main/java/example/Application.java": "f0062b1e8e3956a36b15e8a923192b1be75655cfe6be14e8096a319e74899d25"
+        }
+      },
+      {
+        "id": "vue-counter",
+        "passed": true,
+        "model": "qwen3.8-max",
+        "goal": "生成完整可运行的 Vue 3 工程，使用 JavaScript/Vite5，不要TypeScript。入口 index.html、src/main.js、src/App.vue。App.vue 实现非负计数器，初始0，增加、减少、重置按钮，不能减到负数。计数值元素 data-testid=count，按钮分别 data-testid=increment/decrement/reset。依赖vue3、vite5、@vitejs/plugin-vue5、vitest2、@vue/test-utils2、jsdom25，使用兼容的确切版本号。提供vite.config.js，设置vitest environment为jsdom；package.json脚本build为vite build，test为vitest run。包含 Vitest 组件交互测试，可执行 npm run build 和 npm test。",
+        "generation_source": "saved_model_patches",
+        "patch_count": 6,
+        "task_status": "succeeded",
+        "acceptance_exit_code": 0,
+        "seconds": 5.92,
+        "files": {
+          "index.html": "3bc6bb23a2fd69cf690ffd5f904659b7b952287a315cd758b94cc47998ee715a",
+          "vite.config.js": "1db7fc83004107680f5d507e5bcc7770614319b61cc131ab0a633d292d797d31",
+          "acceptance.test.js": "9ab663ee9ae1135811060b613e2a57ac60639836ff8368edfb9318ff16b784a2",
+          "package-lock.json": "d7db9bf2ca5bd3beacffcf2914e24b484456144a3ec43e8e34ce774fd04d6be4",
+          "package.json": "30e193896147d171200742649893fbe35c6be87ccb96e99ad7b8347dfeb4f8f4",
+          "src/App.vue": "f29348c68158346de3e80d6dccf59c6df050b90b722b31bf985a9637fa25da0a",
+          "src/main.js": "50cb9f18b1c7115799ae456f0d0038840278b49ea520b5549d468ec76c248fb9",
+          "src/App.spec.js": "214dc60cef92e5094ebcead2600a7dd0cf081e57719759f3cbc30db134864387"
+        }
+      }
+    ],
+    "passed": 4,
+    "total": 4
+  },
+  "notes": [
+    "No generated source was edited manually. Java and Vue initial dependency timeouts were followed by replay of identical saved model patches.",
+    "Final run uses an isolated Maven Central configuration and npm mirror.",
+    "Independent acceptance tests were injected after task verification. Test oracles are in benchmarks/generation_cases.py.",
+    "This report is executable example evidence, not a production readiness certification."
+  ]
+}

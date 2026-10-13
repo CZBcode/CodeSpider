@@ -109,6 +109,8 @@ POST /api/admin/users/{id}/credit
 
 认证模式下，任务会读取当前用户已选择且被管理员分配的模型私有配置，再将该配置传给网关；全局模型设置只作为未认证开发模式的回退，不会覆盖用户的模型选择。API Key 仅在服务端内部使用，接口和事件不返回原文。
 
+实际代码生成使用 `code.context` 工具提供有预算的原文与符号，`POST /api/tasks` 的 `context_approved: true` 用于安全模式读取确认。生成请求设置 `require_patches`，契约恢复保留代码预算并拒绝空补丁；最小空补丁恢复只用于非生成计划。`workspace.create_file` 在 Agent 进程以 O_EXCL 执行，已有文件仍使用精确 expected 检查。验证策略与实测范围见 [代码生成实测](generation-validation.md)。
+
 `benchmarks/run_adversarial.py` 使用同一结构契约对 20 个经典场景进行独立调用。批测默认关闭供应商隐藏思考、限制并发，并在超时、截断 JSON 或契约失败后发送一次最小修复请求；使用 `--enable-thinking` 可测试完整思考模式。报告保留模型输出、结构校验、关键词防御检查、失败分类和重试结果，Key 只从环境变量读取。
 
 ### 2.2 执行面

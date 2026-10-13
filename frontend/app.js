@@ -172,7 +172,13 @@ async function createTask(goal) {
   if (!workspace) return showError(new Error("请先选择工程"));
   const session = projectSession(workspace.id), generation = ++session.generation;
   try {
-    const task = await api("/api/tasks", { method: "POST", body: JSON.stringify({ workspace_id: workspace.id, goal }) });
+    const requestTask = (contextApproved) => api("/api/tasks", { method: "POST", body: JSON.stringify({ workspace_id: workspace.id, goal, context_approved: contextApproved }) });
+    let task;
+    try { task = await requestTask(false); }
+    catch (error) {
+      if (!error.approvalRequired || !window.confirm(`${error.message}\n\n工程：${workspace.name}\n是否继续？`)) throw error;
+      task = await requestTask(true);
+    }
     if (session.generation === generation) {
       session.task = task;
       if (state.currentWorkspace?.id === workspace.id) state.task = task;
@@ -181,7 +187,10 @@ async function createTask(goal) {
     if (state.currentWorkspace?.id === workspace.id) switchPanel("chat");
   } catch (error) { showError(error); }
 }
-function appendAgentTurn(task) { const message = document.createElement("div"); message.className = "message agent"; const thinking = (task.thinking || []).map((item) => `<div class="thinking-line"><b>${escapeHtml(item.title)}</b><span>${escapeHtml(item.summary)}</span></div>`).join(""); const steps = (task.plan || []).map((step) => `<div class="thinking-line"><b>${step.step}. ${escapeHtml(step.title)}</b><span>${escapeHtml(step.detail)}</span></div>`).join(""); message.innerHTML = `<details class="thinking-card" open="false"><summary><span class="thinking-label">思考中</span><span class="thinking-meta">${task.plan?.length || 0} 个步骤 · 等待确认</span></summary><div class="thinking-body">${thinking}${steps}<div class="thinking-line"><b>执行目录</b><span>${escapeHtml(task.workspace_snapshot?.root || state.workspaces.find((item) => item.id === task.workspace_id)?.root || "")}</span></div><button class="approve-inline">批准执行</button></div></details>`; const button = message.querySelector(".approve-inline"); button.onclick = () => approveTask(task, button); addProjectMessage(task.workspace_id, message); }
+function patchPreview(task) {
+  return (task.patches || []).map((patch) => `<details class="thinking-card"><summary>${escapeHtml(patch.operation || "write_file")} · ${escapeHtml(patch.path)}</summary><div class="thinking-body">${patch.expected !== undefined ? `<b>原内容</b><pre>${escapeHtml(patch.expected)}</pre>` : ""}<b>新内容</b><pre>${escapeHtml(patch.replacement ?? patch.content ?? "")}</pre></div></details>`).join("");
+}
+function appendAgentTurn(task) { const message = document.createElement("div"); message.className = "message agent"; const thinking = (task.thinking || []).map((item) => `<div class="thinking-line"><b>${escapeHtml(item.title)}</b><span>${escapeHtml(item.summary)}</span></div>`).join(""); const steps = (task.plan || []).map((step) => `<div class="thinking-line"><b>${step.step}. ${escapeHtml(step.title)}</b><span>${escapeHtml(step.detail)}</span></div>`).join(""); message.innerHTML = `<details class="thinking-card"><summary><span class="thinking-label">思考中</span><span class="thinking-meta">${task.plan?.length || 0} 个步骤 · 等待确认</span></summary><div class="thinking-body">${thinking}${steps}<div class="thinking-line"><b>执行目录</b><span>${escapeHtml(task.workspace_snapshot?.root || state.workspaces.find((item) => item.id === task.workspace_id)?.root || "")}</span></div>${patchPreview(task)}<p>批准后写入以上文件并运行工程验证；新 Vue 工程会安装依赖（禁用安装脚本）。</p><button class="approve-inline">批准执行</button></div></details>`; const button = message.querySelector(".approve-inline"); button.onclick = () => approveTask(task, button); addProjectMessage(task.workspace_id, message); }
 function appendMessage(role, text, workspaceId = state.currentWorkspace?.id) { const message = document.createElement("div"); message.className = `message ${role}`; message.innerHTML = `<div class="message-bubble">${escapeHtml(text)}</div>`; addProjectMessage(workspaceId, message); }
 async function sendProjectMessage() { const input = $("project-input"); const goal = input.value.trim(); if (!goal) return; input.value = ""; appendMessage("user", goal); await createTask(goal); }
 function sendFreeMessage() { const input = $("free-input"); const text = input.value.trim(); if (!text) return; input.value = ""; const container = $("free-messages"); const welcome = container.querySelector(".welcome-message"); if (welcome) welcome.remove(); const message = document.createElement("div"); message.className = "message user"; message.innerHTML = `<div class="message-bubble">${escapeHtml(text)}</div>`; container.appendChild(message); const answer = document.createElement("div"); answer.className = "message agent"; answer.innerHTML = `<div class="message-bubble">我可以先帮你梳理这个问题。选择一个具体工程后，我还能继续读取代码、生成补丁并运行验证。</div>`; container.appendChild(answer); container.scrollTop = container.scrollHeight; }

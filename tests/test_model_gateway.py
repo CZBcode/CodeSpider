@@ -1,4 +1,5 @@
 import json
+import tempfile
 import threading
 import unittest
 from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -36,6 +37,10 @@ class _ModelHandler(BaseHTTPRequestHandler):
 
 
 class ModelGatewayTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+
     def test_openai_compatible_endpoint_is_parsed_and_validated(self):
         _ModelHandler.responses = []
         _ModelHandler.requests = []
@@ -43,7 +48,7 @@ class ModelGatewayTests(unittest.TestCase):
         thread = threading.Thread(target=server.serve_forever, daemon=True)
         thread.start()
         try:
-            settings = SettingsService(JsonStore(self.id()))
+            settings = SettingsService(JsonStore(self.temp.name))
             settings.update({"provider": "custom", "model": "test-model", "base_url": "http://127.0.0.1:%d/v1" % server.server_port, "api_key": "test-key"})
             turn = ModelGateway(settings).plan("test", {"project_type": "python"})
             self.assertEqual(turn["schema"], "agent.turn/v1")
@@ -60,7 +65,7 @@ class ModelGatewayTests(unittest.TestCase):
         thread = threading.Thread(target=server.serve_forever, daemon=True)
         thread.start()
         try:
-            settings = SettingsService(JsonStore(self.id()))
+            settings = SettingsService(JsonStore(self.temp.name))
             settings.update({"provider": "custom", "model": "global-model", "base_url": "http://127.0.0.1:%d/v1" % server.server_port, "api_key": "global-key"})
             override = {"provider": "custom", "model": "selected-model", "base_url": "http://127.0.0.1:%d/v1" % server.server_port, "api_key": "selected-key"}
             turn = ModelGateway(settings).plan("test", {"project_type": "python"}, settings_override=override)
@@ -99,7 +104,7 @@ class ModelGatewayTests(unittest.TestCase):
         thread = threading.Thread(target=server.serve_forever, daemon=True)
         thread.start()
         try:
-            settings = SettingsService(JsonStore(self.id()))
+            settings = SettingsService(JsonStore(self.temp.name))
             settings.update({"provider": "custom", "model": "test-model", "base_url": "http://127.0.0.1:%d/v1" % server.server_port, "api_key": "test-key"})
             turn = ModelGateway(settings).plan("test", {"project_type": "python"})
             self.assertEqual(turn["summary"], "repaired")
@@ -130,7 +135,7 @@ class ModelGatewayTests(unittest.TestCase):
         thread = threading.Thread(target=server.serve_forever, daemon=True)
         thread.start()
         try:
-            settings = SettingsService(JsonStore(self.id()))
+            settings = SettingsService(JsonStore(self.temp.name))
             settings.update({"provider": "custom", "model": "test-model", "base_url": "http://127.0.0.1:%d/v1" % server.server_port, "api_key": "test-key"})
             turn = ModelGateway(settings).plan("test", {"project_type": "python"})
             self.assertEqual(turn["summary"], "recovered")

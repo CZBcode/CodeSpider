@@ -77,6 +77,14 @@ class AgentExecutor:
             handle.truncate()
         return {"path": relative_path, "bytes": len(replacement.encode("utf-8"))}
 
+    def create_file(self, relative_path: str, content: str, approved: bool = False) -> Dict[str, Any]:
+        if type(approved) is not bool or not approved:
+            raise PolicyError("file creation requires explicit boolean approval")
+        # O_EXCL closes the check/write race: a new-file patch never overwrites.
+        with self.policy.open_file(relative_path, "x", create_parents=True) as handle:
+            handle.write(content)
+        return {"path": relative_path, "bytes": len(content.encode("utf-8"))}
+
     def run_command(self, command: str, timeout: int = 60, approved: bool = False, cancel_event=None) -> Dict[str, Any]:
         risk, tokens = self.policy.validate_command(command, approved=approved)
         if not 1 <= timeout <= 300:
@@ -107,8 +115,8 @@ class AgentExecutor:
                     continue
         except subprocess.TimeoutExpired as exc:
             self._kill_command(process)
-            process.communicate()
-            raise ExecutionError("command timed out after %ss: %s" % (timeout, command)) from exc
+            output, _ = process.communicate()
+            raise ExecutionError("command timed out after %ss: %s\n%s" % (timeout, command, output[-4000:])) from exc
         finally:
             with self._command_lock:
                 self._commands.discard(process)

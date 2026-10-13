@@ -236,7 +236,7 @@ class Handler(BaseHTTPRequestHandler):
                     raise ValueError("管理员尚未为当前用户分配模型")
                 model_id = model["id"] if model else "mdl_local"
                 model_settings = self.context.auth.model_config(user, model_id) if self.context.auth_required else None
-                task = self.context.tasks.create(body.get("workspace_id", ""), body.get("goal", ""), body.get("patches", []), model_id=model_id, model_settings=model_settings, on_model_call=(lambda: self.context.auth.consume(user["id"], model_id, body.get("request_id", ""))) if self.context.auth_required else None)
+                task = self.context.tasks.create(body.get("workspace_id", ""), body.get("goal", ""), body.get("patches", []), model_id=model_id, model_settings=model_settings, context_approved=body.get("context_approved", False), on_model_call=(lambda: self.context.auth.consume(user["id"], model_id, body.get("request_id", ""))) if self.context.auth_required else None)
                 return self._json(201, task.to_dict())
             if parsed.path.endswith("/approve"):
                 task = self.context.tasks.approve(parsed.path.split("/")[3])

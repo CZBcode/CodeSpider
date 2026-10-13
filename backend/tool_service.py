@@ -1,5 +1,7 @@
 from typing import Any, Dict
 import threading
+from pathlib import PurePosixPath
+import re
 
 from agent_client.executor import AgentExecutor, ExecutionError
 from agent_client.processes import ProcessManager
@@ -59,8 +61,8 @@ class ToolService:
         return {
             "api_version": "1.0",
             "tools": [
-                {"tool": "workspace", "actions": ["list_tree", "read_file", "search", "write_file", "apply_patch"]},
-                {"tool": "code", "actions": ["index", "symbols", "detect"]},
+                {"tool": "workspace", "actions": ["list_tree", "read_file", "search", "write_file", "create_file", "apply_patch"]},
+                {"tool": "code", "actions": ["index", "symbols", "detect", "context"]},
                 {"tool": "process", "actions": ["run", "start", "list", "stop", "cancel"]},
                 {"tool": "memory", "actions": ["search", "project", "preference", "skill"]},
                 {"tool": "document", "actions": ["generate"]},
@@ -95,6 +97,8 @@ class ToolService:
             return {"items": executor.search(request.arguments.get("query", ""), int(request.arguments.get("limit", 100)), approved=request.approved)}
         if request.action == "write_file":
             return executor.write_file(request.arguments["path"], request.arguments.get("content", ""), approved=request.approved)
+        if request.action == "create_file":
+            return executor.create_file(request.arguments["path"], request.arguments.get("content", ""), approved=request.approved)
         if request.action == "apply_patch":
             return executor.apply_patch(request.arguments["path"], request.arguments.get("expected", ""), request.arguments.get("replacement", ""), approved=request.approved)
         raise ValueError("unsupported workspace action")
@@ -104,13 +108,56 @@ class ToolService:
         if self.workspaces.policy(request.workspace_id, request.task_id).mode == "safe" and not request.approved:
             raise ApprovalRequired("code_intelligence", "安全执行模式要求确认分析工程代码", "confirm")
         if request.action == "detect":
-            return {"project_type": self.workspaces.refresh_type(request.workspace_id, request.task_id)}
+            from code_intelligence.adapters import detect_project
+            detected = detect_project(workspace.root)
+            self.workspaces.refresh_type(request.workspace_id, request.task_id)
+            return {"project_type": detected["type"], "verification_commands": detected.get("verification_commands", []),
+                    "setup_commands": detected.get("setup_commands", [])}
+        if request.action == "context":
+            return self._context(request, workspace)
         if request.action == "index":
             symbols = CodeIndexer(workspace.root, self.workspaces.policy(request.workspace_id, request.task_id)).build()
             return {"symbols": len(symbols), "project_type": workspace.project_type}
         if request.action == "symbols":
             return {"items": self.workspaces.symbols(request.workspace_id, request.task_id)}
         raise ValueError("unsupported code action")
+
+    def _context(self, request, workspace):
+        policy = self.workspaces.policy(request.workspace_id, request.task_id)
+        executor = AgentExecutor(policy)
+        paths = [item["path"] for item in self.workspaces.tree(workspace.id, 1000, request.task_id)]
+        terms = set(re.findall(r"[a-zA-Z_][\w.]+", request.arguments.get("goal", "").lower()))
+        def allowed(path):
+            p = PurePosixPath(path)
+            if any(part.startswith(".") for part in p.parts):
+                return False
+            if any(word in p.name.lower() for word in ("secret", "credential", "token", "password")):
+                return False
+            return p.suffix in (".py", ".java", ".vue", ".js", ".ts", ".json", ".xml", ".toml", ".md", ".html", ".css") or p.name == "requirements.txt"
+        candidates = sorted((p for p in paths if allowed(p)), key=lambda p: (-sum(t in p.lower() for t in terms), p))
+        files, skipped, budget = {}, [], 96_000
+        for path in candidates:
+            if len(files) >= 24:
+                skipped.append(path)
+                continue
+            try:
+                content = executor.read_file(path, max_bytes=min(64_000, budget), approved=request.approved)
+            except (ExecutionError, OSError, UnicodeError, PolicyError):
+                skipped.append(path)
+                continue
+            files[path] = content
+            budget -= len(content.encode("utf-8"))
+        # Index only the selected context files; do not send unrelated symbols.
+        indexer = CodeIndexer(workspace.root, policy)
+        symbols = []
+        for path in files:
+            if path.endswith(".py"):
+                symbols.extend(indexer._python(path, path))
+            elif path.endswith((".java", ".vue", ".ts", ".js")):
+                symbols.extend(indexer._regex(path, path, "java" if path.endswith(".java") else "vue"))
+        return {"project_type": workspace.project_type, "description": workspace.description,
+                "files": files, "file_paths": paths, "symbols": symbols[:120], "skipped_files": skipped,
+                "context_limited": bool(skipped) or len(paths) >= 1000}
 
     def _process(self, request: ToolRequest, cancel_event=None) -> Dict[str, Any]:
         if request.action == "stop":

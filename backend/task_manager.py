@@ -44,11 +44,27 @@ class TaskManager:
     def events(self, task_id: str, after: int = 0) -> List[Event]:
         return [Event(**item) for item in self.store.read("events", []) if item["task_id"] == task_id and item["sequence"] > after]
 
-    def create(self, workspace_id: str, goal: str, patches: Optional[List[Dict[str, Any]]] = None, model_id: str = "", on_model_call: Any = None, model_settings: Optional[Dict[str, Any]] = None) -> Task:
+    def create(self, workspace_id: str, goal: str, patches: Optional[List[Dict[str, Any]]] = None, model_id: str = "", on_model_call: Any = None, model_settings: Optional[Dict[str, Any]] = None, context_approved: bool = False) -> Task:
         if not isinstance(goal, str) or not goal.strip():
             raise ValueError("goal cannot be empty")
         workspace = self.workspaces.get(workspace_id)
-        turn = self._make_turn(workspace, goal, model_settings)
+        if type(context_approved) is not bool:
+            raise ValueError("context_approved must be a boolean")
+        config = model_settings if model_settings is not None else self.model.config()
+        remote = config.get("provider") not in ("local", "", None) and bool(config.get("base_url"))
+        context = {"project_type": workspace.project_type}
+        if remote and not patches:
+            from backend.policy import ApprovalRequired
+            if workspace.execution_mode == "safe" and not context_approved:
+                raise ApprovalRequired("generation_context", "生成代码需要读取工程源码与符号并发送给所选模型，请确认", "confirm")
+            response = self.tools.call(ToolRequest("code", "context", {"goal": goal}, workspace_id=workspace.id,
+                approval={"approved": context_approved}))
+            if not response.ok:
+                raise ValueError((response.error or {}).get("message", "cannot read generation context"))
+            context.update(response.data, require_patches=True)
+        turn = self._make_turn(workspace, goal, model_settings, context)
+        if self.workspaces.get(workspace_id).to_dict() != workspace.to_dict():
+            raise ValueError("工程设置已改变，请重新生成补丁")
         if on_model_call:
             on_model_call()
         task = Task(new_id("task"), workspace_id, goal.strip(), plan=turn["steps"], patches=patches or turn.get("patches", []), thinking=turn["thinking"], tool_calls=turn.get("tool_calls", []), response_schema=turn.get("schema", "agent.turn/v1"), model_id=model_id)
@@ -58,24 +74,10 @@ class TaskManager:
         self._emit(task.id, "task.plan_ready", {"schema": task.response_schema, "thinking": task.thinking, "steps": task.plan, "tool_calls": task.tool_calls})
         return task
 
-    def _make_turn(self, workspace: Any, goal: str, model_settings: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-        generated = self.model.validate_turn(self.model.plan(goal, {"project_type": workspace.project_type}, settings_override=model_settings))
-        details = [
-            {"step": 1, "title": "理解工作区", "action": "index", "detail": "读取工程类型、文件和相关符号"},
-            {"step": 2, "title": "执行用户目标", "action": "agent", "detail": goal},
-            {"step": 3, "title": "验证结果", "action": "verify", "detail": "根据工程类型运行测试或检查命令"},
-        ]
-        for index, item in enumerate(generated.get("steps", []), 1):
-            detail_index = index - 1
-            if detail_index < len(details):
-                details[detail_index]["action"] = item.get("action", details[detail_index]["action"])
-                details[detail_index]["title"] = item.get("title", details[detail_index]["title"])
-                details[detail_index]["detail"] = item.get("detail", details[detail_index]["detail"])
-        generated["steps"] = details
-        generated.setdefault("thinking", [{"id": "plan", "title": "制定步骤", "summary": "准备执行工程任务", "status": "pending"}])
-        generated.setdefault("tool_calls", [])
-        generated.setdefault("patches", [])
-        generated.setdefault("schema", "agent.turn/v1")
+    def _make_turn(self, workspace: Any, goal: str, model_settings: Optional[Dict[str, Any]] = None, context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        generated = self.model.validate_turn(self.model.plan(goal, context or {"project_type": workspace.project_type}, settings_override=model_settings))
+        if context and context.get("require_patches"):
+            ModelGateway.validate_generation(generated, context)
         return generated
 
     def approve(self, task_id: str) -> Task:
@@ -136,10 +138,10 @@ class TaskManager:
             if task.patches:
                 for patch in task.patches:
                     operation = patch.get("operation", "apply_patch" if "expected" in patch else "write_file")
-                    if operation == "apply_patch" or "expected" in patch:
+                    if operation == "apply_patch":
                         request = ToolRequest(tool="workspace", action="apply_patch", workspace_id=task.workspace_id, task_id=task_id, arguments={"path": patch.get("path", ""), "expected": patch.get("expected", ""), "replacement": patch.get("replacement", "")}, approval={"approved": True, "source": "task_approval"})
                     else:
-                        request = ToolRequest(tool="workspace", action="write_file", workspace_id=task.workspace_id, task_id=task_id, arguments={"path": patch.get("path", ""), "content": patch.get("replacement", patch.get("content", ""))}, approval={"approved": True, "source": "task_approval"})
+                        request = ToolRequest(tool="workspace", action="create_file" if operation == "create" else "write_file", workspace_id=task.workspace_id, task_id=task_id, arguments={"path": patch.get("path", ""), "content": patch.get("replacement", patch.get("content", ""))}, approval={"approved": True, "source": "task_approval"})
                     result = self._call_tool(task_id, request)
                     self._emit(task_id, "file.changed", result.data)
                 index_response = self._call_tool(task_id, ToolRequest(tool="code", action="index", workspace_id=task.workspace_id,
@@ -155,13 +157,20 @@ class TaskManager:
             verify_command = self._default_verify(project_type)
             if task.patches and not verify_command:
                 raise ExecutionError("无法识别生成代码的工程类型，未执行验证；请补充工程配置后重新验证")
-            if verify_command:
-                request = ToolRequest(tool="process", action="run", workspace_id=task.workspace_id, task_id=task_id, arguments={"command": verify_command, "timeout": 30}, approval={"approved": True, "source": "task_approval"})
+            commands = detection.data.get("setup_commands", []) + ([verify_command] if verify_command else []) + detection.data.get("verification_commands", [])
+            for command in dict.fromkeys(commands):
+                timeout = 300 if command in detection.data.get("setup_commands", []) else 180
+                request = ToolRequest(tool="process", action="run", workspace_id=task.workspace_id, task_id=task_id, arguments={"command": command, "timeout": timeout}, approval={"approved": True, "source": "task_approval"})
                 result = self._call_tool(task_id, request)
-                self._emit(task_id, "process.output", result.data)
+                self._emit(task_id, "process.output", dict(result.data, command=command))
                 if result.data.get("exit_code") != 0:
-                    raise ExecutionError("verification failed (exit code %s): %s" % (result.data.get("exit_code"), verify_command))
-            completion_message = "任务完成。" if task.patches else "任务完成，当前任务没有提供文件补丁。"
+                    raise ExecutionError("verification failed (exit code %s): %s" % (result.data.get("exit_code"), command))
+                if "unittest discover" in command and "Ran 0 tests" in result.data.get("output", ""):
+                    raise ExecutionError("发现测试目录但没有执行任何 unittest 测试，请检查测试框架和发现配置")
+            self._emit(task_id, "verification.completed", {"commands": list(dict.fromkeys(commands))})
+            completion_message = "文件修改已完成，验证命令通过。" if task.patches else "分析与验证已完成，未修改文件。"
+            if commands == ["python3 -m compileall -q ."]:
+                completion_message += "仅检查了 Python 语法，未发现可执行测试。"
             with self._lock:
                 if task_id in self._cancelled:
                     return
@@ -196,4 +205,4 @@ class TaskManager:
 
     @staticmethod
     def _default_verify(project_type: str) -> Optional[str]:
-        return {"python": "python3 -m compileall -q .", "java-springboot": "mvn -q -DskipTests compile", "vue": "npm run build"}.get(project_type)
+        return {"python": "python3 -m compileall -q .", "java-springboot": "mvn -q test", "vue": "npm run build"}.get(project_type)
