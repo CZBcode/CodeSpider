@@ -1,4 +1,5 @@
 import threading
+import time
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Dict, List, Optional
 
@@ -10,6 +11,8 @@ from backend.tool_protocol import ToolRequest
 
 
 class TaskManager:
+    TOOL_RETRIES = 2
+
     def __init__(self, store: Any, workspaces: Any, model: Optional[ModelGateway] = None, tools: Any = None):
         self.store = store
         self.workspaces = workspaces
@@ -172,7 +175,7 @@ class TaskManager:
                 result = self._call_tool(task_id, request)
                 self._emit(task_id, "process.output", dict(result.data, command=command))
                 if result.data.get("exit_code") != 0:
-                    raise ExecutionError("verification failed (exit code %s): %s" % (result.data.get("exit_code"), command))
+                    raise ExecutionError(self._friendly_process_failure(command, result.data))
                 if "unittest discover" in command and "Ran 0 tests" in result.data.get("output", ""):
                     raise ExecutionError("发现测试目录但没有执行任何 unittest 测试，请检查测试框架和发现配置")
             if task.patches:
@@ -193,11 +196,13 @@ class TaskManager:
             with self._lock:
                 if task_id in self._cancelled:
                     return
+                raw_error = str(exc)
+                friendly_error = self._friendly_error(raw_error)
                 task.status = "failed"
-                task.error = str(exc)
+                task.error = friendly_error
                 task.updated_at = now_iso()
                 self._save_task(task)
-                self._emit(task_id, "task.failed", {"error": str(exc)})
+                self._emit(task_id, "task.failed", {"error": friendly_error, "details": raw_error if raw_error != friendly_error else ""})
 
     def _review_design(self, task, proposed=False):
         result = self._call_tool(task.id, ToolRequest("code", "design_review",
@@ -213,16 +218,51 @@ class TaskManager:
     def _call_tool(self, task_id: str, request: ToolRequest):
         if self.tools is None:
             raise RuntimeError("tool service is not configured")
-        with self._lock:
-            if task_id in self._cancelled:
-                raise ExecutionError("task cancelled")
-            self._emit(task_id, "tool.call", {"request": request.to_dict(), "collapsed": True})
-        response = self.tools.call(request)
-        self._emit(task_id, "tool.result", response.to_dict())
-        if not response.ok:
-            message = response.error.get("message", "tool call failed") if response.error else "tool call failed"
-            raise ValueError(message)
-        return response
+        max_attempts = self.TOOL_RETRIES + 1
+        for attempt in range(1, max_attempts + 1):
+            with self._lock:
+                if task_id in self._cancelled:
+                    raise ExecutionError("task cancelled")
+                self._emit(task_id, "tool.call", {"request": request.to_dict(), "collapsed": True,
+                    "attempt": attempt, "max_attempts": max_attempts})
+            response = self.tools.call(request)
+            self._emit(task_id, "tool.result", response.to_dict())
+            process_failed = request.tool == "process" and request.action == "run" and response.ok and response.data.get("exit_code") != 0
+            error = response.error or {}
+            retryable = process_failed or bool(error.get("retryable"))
+            if response.ok and not process_failed:
+                if attempt > 1:
+                    response.data["attempts"] = attempt
+                return response
+            if attempt >= max_attempts or not retryable:
+                if response.ok:
+                    response.data["attempts"] = attempt
+                    return response
+                message = error.get("message", "工具调用失败")
+                raise ValueError(message)
+            self._emit(task_id, "tool.retry", {"collapsed": True, "attempt": attempt + 1,
+                "max_attempts": max_attempts, "message": "工具调用失败，正在自动重试（第 %s/%s 次）" % (attempt + 1, max_attempts),
+                "details": error.get("message", "命令退出码非 0") if error else "命令退出码非 0"})
+            time.sleep(min(0.25 * attempt, 0.75))
+        raise RuntimeError("tool retry loop exhausted")
+
+    @staticmethod
+    def _friendly_process_failure(command: str, result: Dict[str, Any]) -> str:
+        exit_code = result.get("exit_code")
+        output = str(result.get("output", ""))
+        if command.strip().split(" ", 1)[0] in ("mvn", "mvnw", "./mvnw") and (
+            exit_code == 127 or "找不到 Maven" in output or "command not found" in output.lower()
+        ):
+            return "执行失败（exit code %s）：当前 Agent 环境找不到 Maven。请安装 Maven 3.8+ 或提供 ./mvnw，然后重试。" % exit_code
+        return "执行失败（exit code %s）：命令 %s 未通过。详细输出已折叠，请展开查看，修复后重试。" % (exit_code, command)
+
+    @staticmethod
+    def _friendly_error(message: str) -> str:
+        if "找不到 Maven" in message:
+            return message
+        if "file not found" in message.lower() or "no such file" in message.lower():
+            return "执行失败：运行环境缺少所需命令或文件。详细错误已折叠，请检查工程配置后重试。"
+        return message
 
     @staticmethod
     def _default_verify(project_type: str) -> Optional[str]:

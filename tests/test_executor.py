@@ -19,3 +19,9 @@ class ExecutorTests(unittest.TestCase):
             self.assertEqual(executor.read_file("hello.txt", approved=True), "new")
             with self.assertRaises(ExecutionError):
                 executor.apply_patch("hello.txt", "old", "again", approved=True)
+
+    def test_missing_maven_has_friendly_error(self):
+        with tempfile.TemporaryDirectory() as root:
+            executor = AgentExecutor(WorkspacePolicy(root))
+            with self.assertRaisesRegex(ExecutionError, "找不到 Maven"):
+                executor.run_command("./mvnw -q test", approved=True)

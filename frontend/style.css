@@ -70,4 +70,6 @@
 .checkin-card b{font-size:12px;color:#e0d8d0}.checkin-card p{margin:5px 0 0;color:#887f79;font-size:11px}.checkin-card .saved-label{white-space:nowrap}
 .checkin-card button:disabled{opacity:.65;cursor:default}
 .project-actions .outline-btn{display:inline-flex;align-items:center;gap:4px}
+.execution-output{margin:0;color:#bdb4ae;background:#171615;border-radius:6px;padding:10px;max-height:280px;overflow:auto;white-space:pre-wrap;word-break:break-word;font:11px/1.55 ui-monospace,SFMono-Regular,Menlo,monospace}
+.execution-card .thinking-label{color:#d59a80}
 @media(max-width:700px){.topbar-product{display:none}.project-switcher{margin-left:4px;min-width:0;max-width:220px}.project-switcher-copy small,.topbar-account-copy{display:none}.project-switcher-menu{width:260px}.topbar-account-chevron{display:none}.status-dot{display:none}}

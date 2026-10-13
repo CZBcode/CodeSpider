@@ -94,9 +94,20 @@ class AgentExecutor:
                 raise ExecutionError("agent is stopping")
             if cancel_event is not None and cancel_event.is_set():
                 raise ExecutionError("task cancelled")
-            process = subprocess.Popen(tokens, cwd=self.policy.root, text=True,
-                stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                env=self._safe_env(), start_new_session=True)
+            try:
+                process = subprocess.Popen(tokens, cwd=self.policy.root, text=True,
+                    stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                    env=self._safe_env(), start_new_session=True)
+            except FileNotFoundError as exc:
+                executable = tokens[0] if tokens else command
+                if executable in ("mvn", "mvnw", "./mvnw"):
+                    raise ExecutionError(
+                        "命令执行失败：当前 Agent 环境找不到 Maven（%s）。请安装 Maven 3.8+，"
+                        "或在工程根目录提供可执行的 ./mvnw，然后重试。" % executable
+                    ) from exc
+                raise ExecutionError(
+                    "命令执行失败：找不到可执行文件 %s。请检查工程依赖或命令配置后重试。" % executable
+                ) from exc
             self._commands.add(process)
         try:
             deadline = time.monotonic() + timeout

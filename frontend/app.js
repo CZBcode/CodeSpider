@@ -476,7 +476,10 @@ async function approveTask(task, button, statusNode = null) {
     showError(error);
   }
 }
-function appendToolEvent(event, workspaceId, taskId = "") { const request = event.payload?.request || {}; const message = document.createElement("div"); message.className = "message agent"; message.dataset.taskId = taskId; message.innerHTML = `<details class="thinking-card tool-card"><summary><span class="thinking-label">工具调用</span><span class="thinking-meta">调用 ${escapeHtml(request.tool || "tool")}.${escapeHtml(request.action || "call")}</span></summary><div class="thinking-body"><div class="thinking-line"><b>工具请求</b><span>${escapeHtml(JSON.stringify(request.arguments || {}))}</span></div></div></details>`; addProjectMessage(workspaceId, message); }
+function appendToolEvent(event, workspaceId, taskId = "") { const request = event.payload?.request || {}; const attempt = event.payload?.attempt ? ` · 第 ${event.payload.attempt}/${event.payload.max_attempts || event.payload.attempt} 次` : ""; const message = document.createElement("div"); message.className = "message agent"; message.dataset.taskId = taskId; message.innerHTML = `<details class="thinking-card tool-card"><summary><span class="thinking-label">工具调用</span><span class="thinking-meta">调用 ${escapeHtml(request.tool || "tool")}.${escapeHtml(request.action || "call")}${escapeHtml(attempt)}</span></summary><div class="thinking-body"><div class="thinking-line"><b>工具请求</b><span>${escapeHtml(JSON.stringify(request.arguments || {}))}</span></div></div></details>`; addProjectMessage(workspaceId, message); }
+function appendToolRetryEvent(event, workspaceId, taskId = "") { const payload = event.payload || {}; const message = document.createElement("div"); message.className = "message agent"; message.dataset.taskId = taskId; message.innerHTML = `<details class="thinking-card tool-card"><summary><span class="thinking-label">正在重试</span><span class="thinking-meta">${escapeHtml(payload.message || "工具调用失败，正在重试")}</span></summary><div class="thinking-body"><div class="thinking-line"><b>失败原因</b><span>${escapeHtml(payload.details || "请稍候")}</span></div></div></details>`; addProjectMessage(workspaceId, message); }
+function appendProcessOutput(event, workspaceId, taskId = "") { const payload = event.payload || {}, failed = Number(payload.exit_code) !== 0, label = failed ? "执行失败（详情已折叠）" : "验证输出（已折叠）"; const message = document.createElement("div"); message.className = "message agent"; message.dataset.taskId = taskId; message.innerHTML = `<details class="thinking-card execution-card"><summary><span class="thinking-label">${label}</span><span class="thinking-meta">${escapeHtml(payload.command || "验证命令")} · exit ${escapeHtml(payload.exit_code)}</span></summary><div class="thinking-body"><pre class="execution-output">${escapeHtml((payload.output || "").slice(-12000) || "（命令没有输出）")}</pre></div></details>`; addProjectMessage(workspaceId, message); }
+function appendTaskFailure(event, workspaceId, taskId = "") { const payload = event.payload || {}, message = appendMessage("agent", payload.error || "执行失败，请检查工程配置后重试。", workspaceId, taskId); if (payload.details) { const details = document.createElement("div"); details.className = "message agent"; details.dataset.taskId = taskId; details.innerHTML = `<details class="thinking-card execution-card"><summary><span class="thinking-label">失败详情（已折叠）</span><span class="thinking-meta">展开查看原始错误</span></summary><div class="thinking-body"><pre class="execution-output">${escapeHtml(payload.details)}</pre></div></details>`; addProjectMessage(workspaceId, details); } return message; }
 function collapseTaskDetails(workspaceId, taskId) {
   for (const node of projectSession(workspaceId).messages) {
     if (node.dataset?.taskId === taskId) for (const detail of node.querySelectorAll?.("details") || []) detail.open = false;
@@ -489,13 +492,14 @@ function finishTaskView(run, status) {
 }
 function renderTaskEvent(event, run) {
   if (event.type === "tool.call") appendToolEvent(event, run.workspaceId, run.taskId);
+  if (event.type === "tool.retry") appendToolRetryEvent(event, run.workspaceId, run.taskId);
   if (event.type === "file.changed") appendMessage("agent", `已写入文件：${event.payload.path || event.payload.relative_path || "工程文件"}`, run.workspaceId, run.taskId);
-  if (event.type === "process.output") appendMessage("agent", `验证命令：${event.payload.command || ""}\n退出码：${event.payload.exit_code}\n${(event.payload.output || "").slice(-12000)}`, run.workspaceId, run.taskId);
+  if (event.type === "process.output") appendProcessOutput(event, run.workspaceId, run.taskId);
   if (event.type === "agent.notice") appendMessage("agent", event.payload.message, run.workspaceId, run.taskId);
   if (event.type === "design.reviewed") appendDesignReview(event, run.workspaceId, run.taskId);
   if (["task.succeeded", "task.failed", "task.cancelled"].includes(event.type) && !run.terminalSeen) {
     const result = event.payload.message || event.payload.error || ({"task.succeeded": "执行完成", "task.failed": "执行失败", "task.cancelled": "任务已取消"})[event.type];
-    appendMessage("agent", result, run.workspaceId, run.taskId);
+    if (event.type === "task.failed") appendTaskFailure(event, run.workspaceId, run.taskId); else appendMessage("agent", result, run.workspaceId, run.taskId);
     if (run.statusNode) run.statusNode.textContent = result;
     run.terminalSeen = true;
     collapseTaskDetails(run.workspaceId, run.taskId);

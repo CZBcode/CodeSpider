@@ -56,10 +56,24 @@ class ToolService:
             return ToolResponse(request_id=request.request_id, ok=True, data=data)
         except ApprovalRequired as exc:
             request_id = payload.request_id if isinstance(payload, ToolRequest) else str(payload.get("request_id", ""))
-            return ToolResponse(request_id=request_id, ok=False, error={"code": "APPROVAL_REQUIRED", "message": exc.reason, "approval_required": True, "risk": exc.risk, "operation": exc.operation, "retryable": True})
+            return ToolResponse(request_id=request_id, ok=False, error={"code": "APPROVAL_REQUIRED", "message": exc.reason, "approval_required": True, "risk": exc.risk, "operation": exc.operation, "retryable": False})
         except (KeyError, ValueError, PolicyError, ExecutionError, OSError) as exc:
             request_id = payload.request_id if isinstance(payload, ToolRequest) else str(payload.get("request_id", ""))
-            return ToolResponse(request_id=request_id, ok=False, error={"code": "TOOL_ERROR", "message": str(exc), "retryable": False})
+            message = str(exc)
+            retryable = self._retryable_error(exc)
+            return ToolResponse(request_id=request_id, ok=False, error={"code": "TOOL_ERROR", "message": message, "retryable": retryable})
+
+    @staticmethod
+    def _retryable_error(exc: Exception) -> bool:
+        if isinstance(exc, OSError):
+            return not isinstance(exc, FileNotFoundError)
+        if not isinstance(exc, ExecutionError):
+            return False
+        message = str(exc).lower()
+        # These errors describe a stable user or workspace problem. Retrying
+        # would repeat the same operation and could hide the real fix.
+        stable = ("cancelled", "file changed", "source changed", "not found", "larger than", "requires")
+        return not any(marker in message for marker in stable)
 
     def catalog(self) -> Dict[str, Any]:
         return {

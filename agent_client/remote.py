@@ -27,4 +27,4 @@ class RemoteTools:
         except (OSError, ValueError, HTTPException):
             return ToolResponse(payload['request_id'], False, error={
                 'code': 'AGENT_UNAVAILABLE', 'message': 'Agent 连接中断，请检查 daemon 状态；写操作请先核实结果再重试',
-                'retryable': False})
+                'retryable': True})
