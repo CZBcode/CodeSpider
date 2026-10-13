@@ -8,3 +8,62 @@
 
 /* Native disclosure controls keep the file hierarchy keyboard accessible. */
 .file-tree{padding:8px 6px}.tree-toolbar{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:5px 6px 10px;border-bottom:1px solid #302e2c;margin-bottom:6px}.tree-root{display:flex;align-items:center;gap:7px;min-width:0;color:#d4ccc5;font-size:12px}.tree-root b{font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.file-tree svg{width:15px;height:15px;flex-shrink:0;fill:none;stroke:currentColor;stroke-width:1.2;stroke-linejoin:round}.tree-root svg,.file-folder>summary svg{color:#c4a77d}.tree-actions{display:flex;flex-shrink:0;gap:2px}.tree-actions button{border:0;background:transparent;border-radius:4px;color:#a39b95;font-size:10px;padding:4px 5px}.tree-actions button:hover{background:#302d2a;color:#ece6e1}.tree-branches,.tree-children{list-style:none;padding:0;margin:0}.tree-children{margin-left:13px;padding-left:8px;border-left:1px solid #35312d}.file-folder>summary{display:flex;align-items:center;gap:6px;list-style:none;cursor:pointer;border-radius:5px;padding:6px 5px;font-size:12px;color:#c6bdb5}.file-folder>summary::-webkit-details-marker{display:none}.file-folder>summary:before{content:'›';display:inline-block;width:10px;flex-shrink:0;color:#958980;text-align:center;transition:transform .12s}.file-folder[open]>summary:before{transform:rotate(90deg)}.file-folder>summary:hover{background:#302d2a}.file-folder>summary:focus-visible{outline:2px solid #a8c7ff;outline-offset:-2px}.tree-file{width:100%;border:0;background:transparent;text-align:left;font-family:inherit;padding:6px 5px 6px 21px;gap:6px;font-size:12px;min-width:0}.tree-file svg{color:#8da9dc}.tree-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}.tree-file.selected{background:#3b2d26;color:#f2d2bd;box-shadow:inset 2px 0 #d97757}.tree-empty{padding:8px;color:#969391;font-size:12px}
+
+/* The explorer keeps the navigable tree beside the selected file contents. */
+.explorer-grid{grid-template-columns:minmax(0,min(var(--explorer-tree-width,320px),max(160px,calc(100% - 252px)))) 12px minmax(0,1fr);gap:0;flex:1;min-height:0;padding:22px 30px}
+.explorer-tree-pane,.explorer-editor-pane{display:flex;flex-direction:column;min-width:0;min-height:0}
+.explorer-resizer{width:12px;cursor:col-resize;border-radius:5px;background:transparent;transition:background .15s;touch-action:none}
+.explorer-resizer:hover,.explorer-resizer.dragging{background:#5a4036}
+.resizing-explorer{cursor:col-resize!important;user-select:none}
+.explorer-editor-heading{display:flex;align-items:baseline;justify-content:space-between;gap:10px;min-width:0}
+.explorer-editor-heading h3{margin-bottom:10px}
+.explorer-editor-heading span{color:#77716d;font-size:10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.explorer-tree-pane .file-tree{flex:1;max-height:none;min-height:0}
+.explorer-editor-pane .file-preview{display:flex;flex:1;flex-direction:column;min-height:0;margin:0}
+.explorer-editor-pane .file-preview pre{flex:1;max-height:none;min-height:0;overflow:auto}
+@media(max-width:820px){.explorer-grid{grid-template-columns:1fr;gap:14px}.explorer-resizer{display:none}.explorer-tree-pane{min-height:260px}.explorer-editor-pane{min-height:320px}}
+
+.project-main{container-type:inline-size;container-name:project-main}
+.explorer-grid{min-height:300px}
+#explorer-panel>.panel-heading{flex-shrink:0}
+#preview-path{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#close-preview{flex-shrink:0}
+#preview-content:empty:before{content:"从左侧文件树选择文件以查看内容。";color:#77716d}
+.explorer-resizer:before{content:"";display:block;width:2px;height:32px;background:#67534a;border-radius:2px;position:sticky;top:50%;margin:auto}
+@container project-main (max-width:520px){.explorer-grid{grid-template-columns:1fr;gap:14px;flex:none}.explorer-resizer{display:none}.explorer-tree-pane{height:260px}.explorer-editor-pane{height:400px}}
+@media(max-width:600px){.explorer-grid{padding-left:17px;padding-right:17px}}
+
+/* Compact Codex-style chrome: project selection stays in the top-left and the account stays in the top-right. */
+.app-body{height:calc(100vh - 54px)}
+.topbar{gap:18px}
+.topbar-left{min-width:0;flex:1}
+.project-switcher{position:relative;margin-left:18px;min-width:230px;max-width:360px}
+.project-switcher-toggle{display:flex;align-items:center;gap:9px;width:100%;border:1px solid transparent;border-radius:8px;background:transparent;color:#d9d2cc;padding:5px 8px;text-align:left}
+.project-switcher-toggle:hover,.project-switcher-toggle[aria-expanded="true"]{background:#2b2927;border-color:#403a36}
+.project-switcher-icon,.project-symbol{width:25px;height:25px;border-radius:7px;display:grid;place-items:center;flex:none;background:#3d3531;color:#edb79f;font-size:11px}
+.project-switcher-copy{display:grid;min-width:0;flex:1}
+.project-switcher-copy b{font-size:12px;font-weight:550;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.project-switcher-copy small{font-size:10px;color:#817a75;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.project-switcher-chevron,.topbar-account-chevron{color:#908983;font-size:15px}
+.project-switcher-menu{position:absolute;z-index:20;top:calc(100% + 6px);left:0;width:280px;padding:7px;border:1px solid #45403c;border-radius:10px;background:#211f1d;box-shadow:0 15px 45px #0008}
+.project-menu-item{display:flex;align-items:center;gap:9px;width:100%;border:0;border-radius:7px;background:transparent;color:#c8c0ba;text-align:left;padding:8px}
+.project-menu-item:hover,.project-menu-item.active{background:#342e2a;color:#f4ece7}
+.project-menu-item>span:last-child{display:grid;min-width:0}
+.project-menu-item b{font-size:12px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.project-menu-item small{font-size:10px;color:#817a75;margin-top:2px}
+.project-menu-divider{border-top:1px solid #37322f;margin:6px 3px}
+.project-menu-add{width:100%;border:0;border-top:1px solid #37322f;background:transparent;color:#d48a6d;text-align:left;padding:10px 8px 5px;font-size:11px}
+.project-menu-add:hover{color:#efb59d}
+.project-menu-empty{padding:10px 8px;color:#817a75;font-size:11px}
+.topbar-account{display:flex;align-items:center;gap:8px;border:1px solid transparent;border-radius:8px;background:transparent;color:#d8d0ca;padding:4px 7px;text-align:left}
+.topbar-account:hover{background:#2b2927;border-color:#403a36}
+.topbar-account-copy{display:grid;min-width:0}
+.topbar-account-copy b{font-size:11px;font-weight:550;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.topbar-account-copy small{font-size:10px;color:#817a75;margin-top:2px;white-space:nowrap}
+.main-content{width:100%}
+.settings-danger-zone{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-top:42px;padding:18px 0 6px;border-top:1px solid #46302d}
+.settings-danger-zone h3{margin:0 0 5px;color:#d9877d;font-size:13px}
+.settings-danger-zone p{margin:0;color:#847a75;font-size:11px}
+.danger-btn{border:1px solid #82433f;border-radius:7px;background:#512b29;color:#f2b2aa;padding:8px 14px;font-size:12px}
+.danger-btn:hover{background:#713632;color:#ffe0db}
+@media(max-width:700px){.topbar-product{display:none}.project-switcher{margin-left:4px;min-width:0;max-width:220px}.project-switcher-copy small,.topbar-account-copy{display:none}.project-switcher-menu{width:260px}.topbar-account-chevron{display:none}.status-dot{display:none}}

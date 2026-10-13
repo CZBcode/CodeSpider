@@ -5,7 +5,7 @@ const $ = (id) => document.getElementById(id);
 const welcomeMarkup = $("project-messages").innerHTML;
 const freeWelcomeMarkup = $("free-messages").innerHTML;
 function projectSession(workspaceId) {
-  if (!state.sessions.has(workspaceId)) state.sessions.set(workspaceId, { messages: [], task: null, draft: "", command: "", serviceCommand: "", generation: 0, historyLoaded: false, historyLoading: null, turnViews: new Map() });
+  if (!state.sessions.has(workspaceId)) state.sessions.set(workspaceId, { messages: [], task: null, draft: "", command: "", serviceCommand: "", generation: 0, historyLoaded: false, historyLoading: null, turnViews: new Map(), treeWidth: 320, previewGeneration: 0, treeRoot: "", folderOpen: new Map(), selectedFile: "" });
   return state.sessions.get(workspaceId);
 }
 function renderConversation(workspaceId) {
@@ -138,12 +138,29 @@ async function assignModel(modelId, users) { const username = window.prompt(`输
 function escapeHtml(value) { return String(value ?? "").replace(/[&<>\"]/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '\"': "&quot;" }[char])); }
 function showToast(message) { const toast = $("toast"); toast.textContent = message; toast.classList.add("show"); setTimeout(() => toast.classList.remove("show"), 2300); }
 function showError(error) { showToast(error.message || "请求失败"); }
-function setView(view) { if (view === "free-chat") loadConversation(""); document.querySelectorAll(".view").forEach((item) => item.classList.remove("active-view")); const target = $(`${view}-view`); if (target) target.classList.add("active-view"); document.querySelectorAll(".nav-item").forEach((item) => item.classList.toggle("active", item.dataset.view === view)); }
+function setView(view) { if (view === "free-chat") loadConversation(""); document.querySelectorAll(".view").forEach((item) => item.classList.remove("active-view")); const target = $(`${view}-view`); if (target) target.classList.add("active-view"); document.querySelectorAll(".nav-item").forEach((item) => item.classList.toggle("active", item.dataset.view === view)); updateProjectSwitcher(); }
 
 async function loadWorkspaces() { const data = await api("/api/workspaces"); state.workspaces = data.items; renderWorkspaceLists(); }
 function projectIcon(type) { return type === "python" ? "Py" : type === "vue" ? "V" : type === "java-springboot" ? "J" : "⌘"; }
 function modeLabel(mode) { return mode === "divergent" ? "发散模式" : "安全执行模式"; }
-function renderWorkspaceLists() { $("sidebar-projects").innerHTML = state.workspaces.length ? state.workspaces.map((workspace) => `<button class="project-item ${state.currentWorkspace?.id === workspace.id ? "active" : ""}" data-workspace="${workspace.id}"><span class="project-symbol">${projectIcon(workspace.project_type)}</span><span><b>${escapeHtml(workspace.name)}</b><small>${escapeHtml(workspace.project_type)}</small></span></button>`).join("") : `<div class="empty-state" style="padding:18px 8px;font-size:11px">还没有工程</div>`; document.querySelectorAll("[data-workspace]").forEach((item) => item.onclick = () => openWorkspace(item.dataset.workspace)); $("project-cards").innerHTML = state.workspaces.map((workspace) => `<article class="project-card" data-workspace="${workspace.id}"><div class="project-card-top"><div class="project-card-icon">${projectIcon(workspace.project_type)}</div><span class="project-card-menu">···</span></div><h3>${escapeHtml(workspace.name)}</h3><p>${escapeHtml(workspace.root)}</p><div class="project-card-footer"><span>${escapeHtml(workspace.project_type)}</span><span>打开项目 ›</span></div></article>`).join(""); document.querySelectorAll(".project-card[data-workspace]").forEach((item) => item.onclick = () => openWorkspace(item.dataset.workspace)); $("empty-projects").classList.toggle("hidden", state.workspaces.length > 0); }
+function updateProjectSwitcher() {
+  const workspace = state.currentWorkspace, inProject = Boolean(workspace && $("project-view")?.classList.contains("active-view"));
+  $("switcher-project-name").textContent = inProject ? workspace.name : "CodeSpider 工作台";
+  $("switcher-project-meta").textContent = inProject ? `${workspace.project_type} · ${modeLabel(workspace.execution_mode)}` : "首页 / 随意对话";
+  $("switcher-project-icon").textContent = inProject ? projectIcon(workspace.project_type) : "⌘";
+}
+function renderProjectSwitcher() {
+  const menu = $("project-switcher-menu");
+  if (!menu) return;
+  const projects = state.workspaces.map((workspace) => `<button class="project-menu-item ${state.currentWorkspace?.id === workspace.id ? "active" : ""}" data-workspace="${escapeHtml(workspace.id)}" role="menuitem"><span class="project-symbol">${projectIcon(workspace.project_type)}</span><span><b>${escapeHtml(workspace.name)}</b><small>${escapeHtml(workspace.project_type)}</small></span></button>`).join("");
+  menu.innerHTML = `<button class="project-menu-item" data-view="home" role="menuitem"><span class="project-symbol">⌂</span><span><b>首页</b><small>工作台</small></span></button><button class="project-menu-item" data-view="free-chat" role="menuitem"><span class="project-symbol">✦</span><span><b>随意对话</b><small>不绑定工程</small></span></button><div class="project-menu-divider"></div>${projects || `<div class="project-menu-empty">还没有工程</div>`}<button class="project-menu-add" data-new-project type="button">＋ 添加工程</button>`;
+  menu.querySelectorAll?.("[data-workspace]").forEach((item) => item.onclick = () => { closeProjectSwitcher(); openWorkspace(item.dataset.workspace); });
+  menu.querySelectorAll?.("[data-view]").forEach((item) => item.onclick = () => { closeProjectSwitcher(); setView(item.dataset.view); });
+  menu.querySelector?.("[data-new-project]") && (menu.querySelector("[data-new-project]").onclick = () => { closeProjectSwitcher(); setView("home"); openNewProject(); });
+  updateProjectSwitcher();
+}
+function closeProjectSwitcher() { $("project-switcher-menu")?.classList.add("hidden"); $("project-switcher-toggle")?.setAttribute("aria-expanded", "false"); }
+function renderWorkspaceLists() { renderProjectSwitcher(); $("project-cards").innerHTML = state.workspaces.map((workspace) => `<article class="project-card" data-workspace="${workspace.id}"><div class="project-card-top"><div class="project-card-icon">${projectIcon(workspace.project_type)}</div><span class="project-card-menu">···</span></div><h3>${escapeHtml(workspace.name)}</h3><p>${escapeHtml(workspace.root)}</p><div class="project-card-footer"><span>${escapeHtml(workspace.project_type)}</span><span>打开项目 ›</span></div></article>`).join(""); document.querySelectorAll(".project-card[data-workspace]").forEach((item) => item.onclick = () => openWorkspace(item.dataset.workspace)); $("empty-projects").classList.toggle("hidden", state.workspaces.length > 0); }
 
 async function openWorkspace(id) {
   const workspace = state.workspaces.find((item) => item.id === id);
@@ -158,8 +175,9 @@ async function openWorkspace(id) {
     $("project-input").value = session.draft;
     $("command").value = session.command;
     $("service-command").value = session.serviceCommand;
-    for (const target of ["file-tree", "symbol-list", "preview-path", "preview-content", "document-preview", "settings-saved", "design-review-result"]) $(target).textContent = "";
-    $("file-preview").classList.add("hidden");
+    for (const target of ["file-tree", "preview-path", "preview-content", "preview-path-label", "document-preview", "settings-saved", "design-review-result"]) $(target).textContent = "";
+    clearPreview(session);
+    applyExplorerWidth(workspace);
     $("document-preview").classList.add("hidden");
     $("symbol-count").textContent = "—";
     $("doc-status").textContent = "未生成";
@@ -181,12 +199,81 @@ function closeNewProject() { $("new-project-form").classList.add("hidden"); }
 async function createWorkspace() { try { const workspace = await api("/api/workspaces", { method: "POST", body: JSON.stringify({ root: $("project-root").value, name: $("project-name").value }) }); closeNewProject(); await loadWorkspaces(); await openWorkspace(workspace.id); showToast("工程已添加"); } catch (error) { showError(error); } }
 
 function switchPanel(panel) { state.currentPanel = panel; document.querySelectorAll(".project-nav-item").forEach((item) => item.classList.toggle("active", item.dataset.panel === panel)); document.querySelectorAll(".panel-view").forEach((item) => item.classList.remove("active-panel")); const target = $(`${panel}-panel`); if (target) target.classList.add("active-panel"); if (panel === "explorer") loadExplorer(); if (panel === "terminal") listProcesses(); if (panel === "settings") fillSettings(); }
+function applyExplorerWidth(workspace = state.currentWorkspace) {
+  const grid = $("explorer-panel")?.querySelector(".explorer-grid");
+  if (!grid || !workspace) return;
+  grid.style.setProperty("--explorer-tree-width", `${projectSession(workspace.id).treeWidth || 320}px`);
+}
+function clearPreview(session = state.currentWorkspace ? projectSession(state.currentWorkspace.id) : null) {
+  if (session) { session.selectedFile = ""; session.previewGeneration++; }
+  for (const file of $("file-tree").querySelectorAll?.("[data-file]") || []) {
+    file.classList.remove("selected");
+    file.setAttribute("aria-current", "false");
+  }
+  const preview = $("file-preview");
+  if (!preview) return;
+  preview.classList.remove("hidden");
+  $("preview-path").textContent = "选择文件";
+  $("preview-path-label").textContent = "选择文件后显示内容";
+  $("preview-content").textContent = "";
+}
+function setupExplorerResizer() {
+  const resizer = $("explorer-resizer");
+  if (!resizer || resizer.dataset.bound === "true" || typeof window.addEventListener !== "function") return;
+  resizer.dataset.bound = "true";
+  let drag = null;
+  const finish = () => {
+    if (!drag) return;
+    drag = null;
+    resizer.classList.remove("dragging");
+    document.body.classList.remove("resizing-explorer");
+  };
+  resizer.addEventListener("pointerdown", (event) => {
+    if (!state.currentWorkspace) return;
+    event.preventDefault();
+    const grid = $("explorer-panel")?.querySelector(".explorer-grid");
+    if (!grid) return;
+    const session = projectSession(state.currentWorkspace.id);
+    if (event.button !== 0) return;
+    drag = { startX: event.clientX, startWidth: grid.querySelector(".explorer-tree-pane").getBoundingClientRect().width, grid, session, workspace: state.currentWorkspace, pointerId: event.pointerId };
+    resizer.classList.add("dragging");
+    document.body.classList.add("resizing-explorer");
+    resizer.setPointerCapture?.(event.pointerId);
+  });
+  window.addEventListener("pointermove", (event) => {
+    if (!drag || event.pointerId !== drag.pointerId) return;
+    if (state.currentWorkspace !== drag.workspace) return finish();
+    const style = getComputedStyle(drag.grid);
+    const available = drag.grid.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
+    const width = Math.max(160, Math.min(available - 252, drag.startWidth + event.clientX - drag.startX));
+    drag.session.treeWidth = width;
+    drag.grid.style.setProperty("--explorer-tree-width", `${width}px`);
+  });
+  window.addEventListener("pointerup", finish);
+  window.addEventListener("pointercancel", finish);
+  window.addEventListener("blur", finish);
+  resizer.addEventListener("lostpointercapture", finish);
+  resizer.addEventListener("dblclick", () => {
+    if (!state.currentWorkspace) return;
+    const session = projectSession(state.currentWorkspace.id);
+    session.treeWidth = 320;
+    applyExplorerWidth(state.currentWorkspace);
+  });
+  resizer.addEventListener("keydown", (event) => {
+    if (!state.currentWorkspace || !["ArrowLeft", "ArrowRight", "Home"].includes(event.key)) return;
+    event.preventDefault();
+    const session = projectSession(state.currentWorkspace.id);
+    session.treeWidth = event.key === "Home" ? 320 : Math.max(160, Math.min(700, (session.treeWidth || 320) + (event.key === "ArrowRight" ? 20 : -20)));
+    applyExplorerWidth(state.currentWorkspace);
+  });
+}
 function renderFileTree(items, workspace) {
   const session = projectSession(workspace.id), container = $("file-tree");
+  applyExplorerWidth(workspace);
   if (session.treeRoot !== workspace.root) {
     session.treeRoot = workspace.root;
     session.folderOpen = new Map();
-    session.selectedFile = "";
+    clearPreview(session);
   }
   const root = new Map();
   for (const item of items) {
@@ -233,6 +320,9 @@ async function loadExplorer() {
   const workspace = state.currentWorkspace;
   if (!workspace) return;
   try {
+    const tree = await callTool("workspace", "list_tree", workspace.id, { limit: 1000 });
+    if (state.currentWorkspace !== workspace) return;
+    renderFileTree(tree.items, workspace);
     let symbols;
     try { symbols = await callTool("code", "symbols", workspace.id); }
     catch (error) {
@@ -241,24 +331,28 @@ async function loadExplorer() {
       else throw error;
     }
     if (state.currentWorkspace !== workspace) return;
-    const tree = await callTool("workspace", "list_tree", workspace.id, { limit: 1000 });
-    if (state.currentWorkspace !== workspace) return;
-    renderFileTree(tree.items, workspace);
-    $("symbol-list").innerHTML = symbols.items.map((item) => `<div class="symbol-row"><span>${escapeHtml(item.kind)}</span><b>${escapeHtml(item.name)}</b><small>${escapeHtml(item.path)}:${item.line}</small></div>`).join("") || `<span class="muted">暂无符号索引</span>`;
     $("symbol-count").textContent = `${symbols.items.length} 个符号`;
   } catch (error) { if (state.currentWorkspace === workspace) showError(error); }
 }
 async function previewFile(path, approved = false, workspace = state.currentWorkspace) {
   if (!workspace) return;
+  const session = projectSession(workspace.id), generation = ++session.previewGeneration, epoch = state.accountEpoch;
+  const current = () => state.currentWorkspace === workspace && state.accountEpoch === epoch && session.previewGeneration === generation;
+  session.selectedFile = path;
+  $("preview-path").textContent = path;
+  $("preview-path-label").textContent = "正在读取…";
+  $("preview-content").textContent = "";
   try {
     const data = await callTool("workspace", "read_file", workspace.id, { path }, approved);
-    if (state.currentWorkspace !== workspace) return;
+    if (!current()) return;
     $("file-preview").classList.remove("hidden");
     $("preview-path").textContent = path;
+    $("preview-path-label").textContent = "已加载文件内容";
     $("preview-content").textContent = data.content;
   } catch (error) {
-    if (state.currentWorkspace !== workspace) return;
+    if (!current()) return;
     if (error.approvalRequired && window.confirm("安全执行模式需要确认读取这个文件的内容。是否继续？")) return previewFile(path, true, workspace);
+    $("preview-path-label").textContent = error.approvalRequired ? "未授权读取" : "读取失败，请重新选择文件重试";
     showError(error);
   }
 }
@@ -522,7 +616,9 @@ document.querySelectorAll("[data-settings-tab]").forEach((button) => {
   };
 });
 document.querySelectorAll("[data-view]").forEach((item) => item.onclick = () => setView(item.dataset.view)); document.querySelectorAll("[data-panel]").forEach((item) => item.onclick = () => { if (item.dataset.panel) switchPanel(item.dataset.panel); }); document.querySelectorAll("[data-quick]").forEach((item) => item.onclick = () => { $("quick-chat").value = item.dataset.quick; $("quick-chat").focus(); }); document.querySelectorAll("[data-suggest]").forEach((item) => item.onclick = () => { $("project-input").value = item.dataset.suggest; sendProjectMessage(); });
-$("sidebar-toggle").onclick = () => $("app-shell").classList.toggle("sidebar-collapsed"); $("focus-toggle").onclick = () => $("app-shell").classList.toggle("context-hidden"); $("toggle-context").onclick = () => $("app-shell").classList.toggle("context-hidden"); $("context-close").onclick = () => $("app-shell").classList.add("context-hidden"); $("new-project").onclick = openNewProject; $("home-add-project").onclick = openNewProject; $("empty-add-project").onclick = openNewProject; $("close-new-project").onclick = closeNewProject; $("create-project").onclick = createWorkspace; $("project-send").onclick = sendProjectMessage; $("free-send").onclick = sendFreeMessage; $("refresh-explorer").onclick = loadExplorer; $("review-design").onclick = () => reviewProjectDesign(); $("close-preview").onclick = () => $("file-preview").classList.add("hidden"); $("run-command").onclick = () => runCommand(); $("start-service").onclick = () => startService(); $("stop-services").onclick = stopServices; $("generate-doc").onclick = () => generateDocument(); $("save-settings").onclick = saveSettings; $("reindex-project").onclick = reindexProject; $("project-settings-btn").onclick = () => switchPanel("settings"); $("quick-send").onclick = () => { setView("free-chat"); $("free-input").value = $("quick-chat").value; sendFreeMessage(); };
+setupExplorerResizer();
+$("focus-toggle").onclick = () => $("app-shell").classList.toggle("context-hidden"); $("toggle-context").onclick = () => $("app-shell").classList.toggle("context-hidden"); $("context-close").onclick = () => $("app-shell").classList.add("context-hidden"); $("home-add-project").onclick = openNewProject; $("empty-add-project").onclick = openNewProject; $("close-new-project").onclick = closeNewProject; $("create-project").onclick = createWorkspace; $("project-send").onclick = sendProjectMessage; $("free-send").onclick = sendFreeMessage; $("refresh-explorer").onclick = loadExplorer; $("review-design").onclick = () => reviewProjectDesign(); $("close-preview").onclick = () => clearPreview(); $("run-command").onclick = () => runCommand(); $("start-service").onclick = () => startService(); $("stop-services").onclick = stopServices; $("generate-doc").onclick = () => generateDocument(); $("save-settings").onclick = saveSettings; $("reindex-project").onclick = reindexProject; $("project-settings-btn").onclick = () => switchPanel("settings"); $("quick-send").onclick = () => { setView("free-chat"); $("free-input").value = $("quick-chat").value; sendFreeMessage(); };
+$("project-switcher-toggle").onclick = () => { const menu = $("project-switcher-menu"), open = menu.classList.toggle("hidden"); $("project-switcher-toggle").setAttribute("aria-expanded", String(!open)); }; document.addEventListener?.("click", (event) => { if (!event.target.closest?.(".project-switcher")) closeProjectSwitcher(); });
 $("global-settings").onclick = () => { setView("global-settings"); loadGlobalSettings(); }; $("save-global-settings").onclick = () => saveGlobalSettings(false); $("clear-api-key").onclick = () => { if (window.confirm("确认清除本机保存的 API Key？")) saveGlobalSettings(true); };
 $("auth-form").onsubmit = submitAuth; $("auth-switch").onclick = () => showAuth(state.authMode === "login" ? "register" : "login"); $("logout-btn").onclick = async () => { try { await api("/api/auth/logout", { method: "POST", body: "{}" }); } finally { resetConversations(); state.user = null; showAuth("login"); } }; $("save-account-model").onclick = saveAccountModel; $("add-admin-model").onclick = addAdminModel;
 $("project-input").addEventListener("keydown", (event) => { if ((event.metaKey || event.ctrlKey) && event.key === "Enter") sendProjectMessage(); }); $("free-input").addEventListener("keydown", (event) => { if ((event.metaKey || event.ctrlKey) && event.key === "Enter") sendFreeMessage(); });
