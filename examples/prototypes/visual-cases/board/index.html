@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>个人任务看板</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header id="app-header">
+    <h1 class="app-title">任务看板</h1>
+    <div class="header-controls">
+      <input
+        type="text"
+        id="search-input"
+        aria-label="Search tasks by title"
+        placeholder="按标题搜索…"
+      >
+      <button type="button" id="btn-add-task" aria-label="Add new task">新建任务</button>
+    </div>
+  </header>
+
+  <section id="stats-bar" aria-label="任务统计">
+    <span>待办：<strong id="stat-todo">0</strong></span>
+    <span>进行中：<strong id="stat-inprogress">0</strong></span>
+    <span>已完成：<strong id="stat-done">0</strong></span>
+  </section>
+
+  <main id="board">
+    <div class="lane" data-lane="todo">
+      <h2 class="lane-title">待办</h2>
+      <div class="lane-cards"></div>
+    </div>
+    <div class="lane" data-lane="inprogress">
+      <h2 class="lane-title">进行中</h2>
+      <div class="lane-cards"></div>
+    </div>
+    <div class="lane" data-lane="done">
+      <h2 class="lane-title">已完成</h2>
+      <div class="lane-cards"></div>
+    </div>
+  </main>
+
+  <dialog id="dialog-create">
+    <h2 class="dialog-title">新建任务</h2>
+    <form id="create-form">
+      <div class="form-field">
+        <label for="input-title">标题 <span class="required-mark" aria-hidden="true">*</span></label>
+        <input type="text" id="input-title" required autocomplete="off">
+        <p class="field-error" id="title-error" hidden>标题为必填项</p>
+      </div>
+      <div class="form-field">
+        <label for="input-priority">优先级</label>
+        <select id="input-priority">
+          <option value="low">低</option>
+          <option value="medium" selected>中</option>
+          <option value="high">高</option>
+        </select>
+      </div>
+      <div class="form-actions">
+        <button type="button" id="btn-cancel">取消</button>
+        <button type="submit" id="btn-submit">创建</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script src="./app.js"></script>
+</body>
+</html>

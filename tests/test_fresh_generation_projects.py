@@ -75,7 +75,12 @@ class FreshGenerationProjectTests(unittest.TestCase):
             }
             # Keep this case independent from a developer's global Nexus
             # mirror; the generated project still executes through the Agent.
-            context.tasks._default_verify = lambda _project_type: "mvn -s %s -q test" % clean_settings
+            from engineering_plugins import springboot
+            original_verification = springboot.verification
+            verifier = patch.object(springboot, "verification", side_effect=lambda root: dict(
+                original_verification(root), verify_command="mvn -s %s -q test" % clean_settings))
+            verifier.start()
+            self.addCleanup(verifier.stop)
             task = context.tasks.create(workspace.id, "生成 Spring MVC 折扣工程", patches=create_patches(files))
             result = approve_and_wait(context, task)
             if result.status != "succeeded":

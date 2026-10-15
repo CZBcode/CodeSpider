@@ -22,6 +22,17 @@ def wait_until(predicate, timeout=5):
     raise AssertionError('condition timed out')
 
 
+def override_verification(context, command):
+    """Substitute the plugin detection response, including across Agent IPC."""
+    original = context.tools.call
+    def call(request):
+        result = original(request)
+        if getattr(request, 'tool', '') == 'code' and request.action == 'detect' and result.ok:
+            result.data['verify_command'] = command
+        return result
+    context.tools.call = call
+
+
 class TaskRegressionTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
@@ -77,7 +88,7 @@ class TaskRegressionTests(unittest.TestCase):
     def test_cancel_running_command_reaps_process_and_preserves_cancelled_state(self):
         marker = self.root / 'command.pid'
         script = "import os,time; from pathlib import Path; Path('command.pid').write_text(str(os.getpid())); time.sleep(3); Path('too-late').write_text('bad')"
-        self.tasks._default_verify = lambda _: shlex.quote(sys.executable) + ' -c ' + shlex.quote(script)
+        override_verification(self.context, shlex.quote(sys.executable) + ' -c ' + shlex.quote(script))
         task = self.tasks.create(self.workspace.id, 'cancel command')
         self.tasks.approve(task.id)
         wait_until(marker.exists)

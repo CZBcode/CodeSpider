@@ -13,7 +13,7 @@ from tests.test_generation_workflow import turn
 
 
 class GenerationHttpTests(unittest.TestCase):
-    def test_remote_generation_requires_context_consent_and_executes_through_api(self):
+    def test_remote_generation_reads_without_prompt_but_writes_only_after_approval(self):
         self.run_generation(False)
 
     def test_account_default_generates_without_thought_fields(self):
@@ -57,10 +57,7 @@ class GenerationHttpTests(unittest.TestCase):
                 if authenticated:
                     post('/api/auth/register', {'username': 'admin', 'password': 'password123'}, 201)
                 payload={'workspace_id':workspace.id,'goal':'Generate'}
-                rejected=post('/api/tasks',payload,409)
-                self.assertTrue(rejected['approval_required'])
-                self.assertEqual(len(_ModelHandler.requests),0)
-                task=post('/api/tasks',dict(payload,context_approved=True),201)
+                task=post('/api/tasks',payload,201)
                 self.assertEqual(task['summary'], 'Generated')
                 self.assertEqual(context.tasks.get(task['id']).summary, 'Generated')
                 self.assertEqual(next(e.payload['summary'] for e in context.tasks.events(task['id']) if e.type == 'task.plan_ready'), 'Generated')

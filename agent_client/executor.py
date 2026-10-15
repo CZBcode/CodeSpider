@@ -5,7 +5,8 @@ import threading
 import time
 from typing import Any, Dict, List, Optional
 
-from backend.policy import ApprovalRequired, PolicyError, WorkspacePolicy
+from backend.policy import PolicyError, WorkspacePolicy
+from agent_client.sandbox import prepare
 
 
 class ExecutionError(RuntimeError):
@@ -23,7 +24,7 @@ class AgentExecutor:
     def read_file(self, relative_path: str, max_bytes: int = 512 * 1024, approved: bool = False) -> str:
         path = self.policy.validate_read(relative_path, approved=approved)
         if not os.path.isfile(path):
-            raise ExecutionError("file not found: %s" % relative_path)
+            raise FileNotFoundError("file not found: %s" % relative_path)
         with self.policy.open_file(relative_path, "rb") as handle:
             data = handle.read(max_bytes + 1)
         if len(data) > max_bytes:
@@ -33,8 +34,6 @@ class AgentExecutor:
     def search(self, query: str, limit: int = 100, approved: bool = False) -> List[Dict[str, Any]]:
         if not query:
             return []
-        if self.policy.mode == "safe" and not approved:
-            raise ApprovalRequired("code_search", "安全执行模式要求确认搜索工程文件内容", "confirm")
         results = []
         for current, dirs, files in os.walk(self.policy.root):
             relative_dir = os.path.relpath(current, self.policy.root)
@@ -95,9 +94,10 @@ class AgentExecutor:
             if cancel_event is not None and cancel_event.is_set():
                 raise ExecutionError("task cancelled")
             try:
-                process = subprocess.Popen(tokens, cwd=self.policy.root, text=True,
+                invocation, environment = prepare(self.policy, tokens, self._safe_env())
+                process = subprocess.Popen(invocation, cwd=self.policy.root, text=True,
                     stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                    env=self._safe_env(), start_new_session=True)
+                    env=environment, start_new_session=True)
             except FileNotFoundError as exc:
                 executable = tokens[0] if tokens else command
                 if executable in ("mvn", "mvnw", "./mvnw"):

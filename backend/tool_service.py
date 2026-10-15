@@ -1,5 +1,8 @@
 from typing import Any, Dict
+from dataclasses import replace
+from backend.function_registry import validate_input
 import threading
+import os
 from pathlib import PurePosixPath
 import re
 import hashlib
@@ -14,16 +17,20 @@ from code_intelligence.design_contract import CONTRACT_FILE, load_contract, revi
 from code_intelligence.structure import SOURCE_SUFFIXES, review_structure, summarize_structure
 from fnmatch import fnmatch
 from memory.service import MemoryService
+from backend.market import MarketService
+from backend.previews import PreviewService
 
 
 class ToolService:
     """Dispatches all Agent capabilities through the versioned tool protocol."""
 
-    def __init__(self, store: Any, workspaces: Any, processes: ProcessManager):
+    def __init__(self, store: Any, workspaces: Any, processes: ProcessManager, market: Any = None):
         self.store = store
         self.workspaces = workspaces
         self.processes = processes
+        self.market = market or MarketService(store)
         self.memory = MemoryService(store)
+        self.previews = PreviewService(store, workspaces, self.market)
         self._control_lock = threading.Lock()
         self._task_controls = {}
 
@@ -34,29 +41,48 @@ class ToolService:
     def call(self, payload: Dict[str, Any]) -> ToolResponse:
         try:
             request = payload if isinstance(payload, ToolRequest) else ToolRequest.from_dict(payload)
-            # Validate even actions that do not otherwise inspect approval.
-            request.approved
-            if request.tool == "process" and request.action == "cancel":
-                if not request.task_id:
-                    raise ValueError("task_id is required for cancellation")
-                lock, cancelled = self._control(request.task_id)
-                cancelled.set()
-                # Acknowledge only after the in-flight operation has finished
-                # (commands observe the event and kill/reap their process group).
-                with lock:
-                    data = {"task_id": request.task_id, "cancelled": True}
-            elif request.task_id:
-                lock, cancelled = self._control(request.task_id)
-                with lock:
-                    if cancelled.is_set():
-                        raise ExecutionError("task cancelled")
-                    data = self._dispatch(request, cancelled)
-            else:
-                data = self._dispatch(request)
+            deleting = request.tool == "workspace" and request.action == "delete"
+            with self.workspaces.lease(request.workspace_id, exclusive=deleting):
+                # Validate even actions that do not otherwise inspect approval.
+                request.approved
+                if os.environ.get("CODESPIDER_AUTH_REQUIRED") == "1" and not request.owner_id:
+                    raise PermissionError("工具调用缺少用户身份")
+                if request.owner_id:
+                    if request.task_id:
+                        task = next((t for t in self.store.read("tasks", []) if t["id"] == request.task_id), None)
+                        if not task or task.get("owner_id") != request.owner_id:
+                            raise PermissionError("无权访问该会话任务")
+                        if task["workspace_id"] != request.workspace_id:
+                            raise PermissionError("任务与工程不匹配")
+                    if request.workspace_id:
+                        self.workspaces.get(request.workspace_id, request.task_id, request.owner_id)
+                    elif request.tool not in ("memory",):
+                        raise PermissionError("工程工具必须指定当前用户的工程")
+                if request.tool == "process" and request.action == "cancel":
+                    if not request.task_id:
+                        raise ValueError("task_id is required for cancellation")
+                    lock, cancelled = self._control(request.task_id)
+                    cancelled.set()
+                    # Acknowledge only after the in-flight operation has finished
+                    # (commands observe the event and kill/reap their process group).
+                    with lock:
+                        self.previews.cancel(task_id=request.task_id)
+                        data = {"task_id": request.task_id, "cancelled": True}
+                elif request.task_id:
+                    lock, cancelled = self._control(request.task_id)
+                    with lock:
+                        if cancelled.is_set():
+                            raise ExecutionError("task cancelled")
+                        data = self._dispatch(request, cancelled)
+                else:
+                    data = self._dispatch(request)
             return ToolResponse(request_id=request.request_id, ok=True, data=data)
         except ApprovalRequired as exc:
             request_id = payload.request_id if isinstance(payload, ToolRequest) else str(payload.get("request_id", ""))
             return ToolResponse(request_id=request_id, ok=False, error={"code": "APPROVAL_REQUIRED", "message": exc.reason, "approval_required": True, "risk": exc.risk, "operation": exc.operation, "retryable": False})
+        except PermissionError as exc:
+            request_id = payload.request_id if isinstance(payload, ToolRequest) else str(payload.get("request_id", ""))
+            return ToolResponse(request_id=request_id, ok=False, error={"code": "FORBIDDEN", "message": str(exc), "retryable": False})
         except (KeyError, ValueError, PolicyError, ExecutionError, OSError) as exc:
             request_id = payload.request_id if isinstance(payload, ToolRequest) else str(payload.get("request_id", ""))
             message = str(exc)
@@ -76,37 +102,75 @@ class ToolService:
         return not any(marker in message for marker in stable)
 
     def catalog(self) -> Dict[str, Any]:
-        return {
-            "api_version": "1.0",
-            "tools": [
-                {"tool": "workspace", "actions": ["list_tree", "read_file", "search", "write_file", "create_file", "apply_patch"]},
-                {"tool": "code", "actions": ["index", "symbols", "detect", "context", "design_review"]},
-                {"tool": "process", "actions": ["run", "start", "list", "stop", "cancel"]},
-                {"tool": "memory", "actions": ["search", "project", "preference", "skill"]},
-                {"tool": "document", "actions": ["generate"]},
-            ],
-        }
+        return {"api_version": "1.0", "tools": [
+            {"tool": "workspace", "actions": ["list_tree", "read_file", "search", "write_file", "create_file", "apply_patch", "delete"]},
+            {"tool": "code", "actions": ["index", "symbols", "detect", "context", "design_review"]},
+            {"tool": "process", "actions": ["run", "start", "list", "stop", "cancel"]},
+            {"tool": "preview", "actions": ["build", "status", "deploy", "cancel"]},
+            {"tool": "memory", "actions": ["search", "project", "preference", "skill"]},
+            {"tool": "document", "actions": ["generate", "read"]},
+            {"tool": "function", "actions": ["call"]},
+        ], "market": self.market.catalog()}
 
     def _dispatch(self, request: ToolRequest, cancel_event=None) -> Dict[str, Any]:
+        if request.tool == "function":
+            if request.action != "call":
+                raise ValueError("unsupported function action")
+            item = self.market.require(request.arguments.get("function_id", ""), request.owner_id, "function")
+            arguments = request.arguments.get("input", {})
+            validate_input(item, arguments)
+            return self._dispatch(replace(request, tool=item["tool"], action=item["action"], arguments=arguments), cancel_event)
         if request.tool == "workspace":
             return self._workspace(request)
         if request.tool == "code":
             return self._code(request)
         if request.tool == "process":
             return self._process(request, cancel_event)
+        if request.tool == "preview":
+            workspace = self.workspaces.get(request.workspace_id, request.task_id, request.owner_id)
+            if request.action == "status":
+                return self.previews.status(workspace)
+            if request.action == "build":
+                return self.previews.build(request, cancel_event)
+            if request.action in ("deploy", "cancel"):
+                job = self.previews.status(workspace).get("job", {})
+                if request.arguments.get("build_id") != job.get("id") or (request.task_id and request.task_id != job.get("task_id")):
+                    raise ValueError("构建与当前工程或任务不匹配")
+                if request.action == "cancel":
+                    return self.previews.cancel(build_id=job["id"])
+                if self.workspaces.policy(workspace.id, request.task_id).mode == "safe" and not request.approved:
+                    raise ApprovalRequired("preview_deploy", "发布将更新工程预览，请确认", "confirm")
+                return self.previews.deploy(workspace, job["id"], cancel_event)
+            raise ValueError("unsupported preview action")
         if request.tool == "memory":
             return self._memory(request)
         if request.tool == "document":
-            workspace = self.workspaces.get(request.workspace_id, request.task_id)
+            workspace = self.workspaces.get(request.workspace_id, request.task_id, request.owner_id)
+            if request.action == "read":
+                executor = AgentExecutor(self.workspaces.policy(request.workspace_id, request.task_id))
+                try:
+                    content = executor.read_file("CODESPIDER.md", approved=request.approved)
+                except FileNotFoundError:
+                    return {"path": "CODESPIDER.md", "exists": False}
+                return {"path": "CODESPIDER.md", "exists": True, "content": content}
             if request.action != "generate":
                 raise ValueError("unsupported document action")
             if self.workspaces.policy(request.workspace_id, request.task_id).mode == "safe" and not request.approved:
-                raise ApprovalRequired("document_generate", "安全执行模式要求确认读取工程并生成文档", "confirm")
+                raise ApprovalRequired("document_generate", "生成文档将写入或覆盖 CODESPIDER.md，请确认", "confirm")
             return generate_workspace_document(workspace, request.arguments.get("title", "工程说明"))
         raise ValueError("unknown tool: %s" % request.tool)
 
     def _workspace(self, request: ToolRequest) -> Dict[str, Any]:
+        self.workspaces.get(request.workspace_id, request.task_id, request.owner_id)
         executor = AgentExecutor(self.workspaces.policy(request.workspace_id, request.task_id))
+        if request.action == "delete":
+            if request.task_id:
+                raise ValueError("不能通过生成任务删除项目")
+            workspace = self.workspaces.get(request.workspace_id, owner_id=request.owner_id)
+            if any(item["status"] == "running" for item in self.processes.list(workspace.root)):
+                raise ValueError("项目服务仍在运行，请先到终端停止服务")
+            return self.workspaces.delete(request.workspace_id, request.owner_id,
+                request.arguments.get("confirm_name"), request.arguments.get("confirmed", False) if request.approved else False)
         if request.action == "list_tree":
             return {"items": self.workspaces.tree(request.workspace_id, int(request.arguments.get("limit", 1000)), request.task_id)}
         if request.action == "read_file":
@@ -122,15 +186,14 @@ class ToolService:
         raise ValueError("unsupported workspace action")
 
     def _code(self, request: ToolRequest) -> Dict[str, Any]:
-        workspace = self.workspaces.get(request.workspace_id, request.task_id)
-        if self.workspaces.policy(request.workspace_id, request.task_id).mode == "safe" and not request.approved:
-            raise ApprovalRequired("code_intelligence", "安全执行模式要求确认分析工程代码", "confirm")
+        workspace = self.workspaces.get(request.workspace_id, request.task_id, request.owner_id)
         if request.action == "detect":
             from code_intelligence.adapters import detect_project
             detected = detect_project(workspace.root)
             self.workspaces.refresh_type(request.workspace_id, request.task_id)
             return {"project_type": detected["type"], "verification_commands": detected.get("verification_commands", []),
-                    "setup_commands": detected.get("setup_commands", [])}
+                    "setup_commands": detected.get("setup_commands", []), "plugin_id": detected.get("plugin_id", ""), "verify_command": detected.get("verify_command"),
+                    "preview_supported": bool(detected.get("preview_supported"))}
         if request.action == "design_review":
             context = self._context(request, workspace, review=True)
             expected = request.arguments.get("design_contract")
@@ -213,11 +276,11 @@ class ToolService:
         if request.action == "stop":
             pid = int(request.arguments["pid"])
             if request.workspace_id:
-                workspace = self.workspaces.get(request.workspace_id, request.task_id)
+                workspace = self.workspaces.get(request.workspace_id, request.task_id, request.owner_id)
                 if pid not in [item["pid"] for item in self.processes.list(workspace.root)]:
                     raise ValueError("process does not belong to workspace")
             return self.processes.stop(pid)
-        workspace = self.workspaces.get(request.workspace_id, request.task_id)
+        workspace = self.workspaces.get(request.workspace_id, request.task_id, request.owner_id)
         if request.action == "run":
             return AgentExecutor(self.workspaces.policy(request.workspace_id, request.task_id)).run_command(request.arguments["command"], int(request.arguments.get("timeout", 60)), approved=request.approved, cancel_event=cancel_event)
         if request.action == "start":
@@ -228,8 +291,10 @@ class ToolService:
 
     def _memory(self, request: ToolRequest) -> Dict[str, Any]:
         scope_id = request.arguments.get("scope_id", request.workspace_id or "global")
+        if request.owner_id:
+            scope_id = "user:%s:%s" % (request.owner_id, scope_id)
         if request.action == "search":
-            return {"items": self.memory.search(scope_id, request.arguments.get("query", ""))}
+            return {"items": self.memory.search(scope_id, request.arguments.get("query", ""), include_global=not bool(request.owner_id))}
         if request.action == "project":
             return self.memory.add_project(scope_id, request.arguments.get("content", {}))
         if request.action == "preference":

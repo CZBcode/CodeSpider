@@ -43,7 +43,8 @@ class P1WorkflowTests(unittest.TestCase):
                 raise RuntimeError('test barrier timeout')
             return original(request)
         command = shlex.quote(sys.executable) + ' -c ' + shlex.quote("from pathlib import Path; Path('verified').write_text(str(Path.cwd()))")
-        self.context.tasks._default_verify = lambda _: command
+        from tests.test_task_regressions import override_verification
+        override_verification(self.context, command)
         try:
             with patch.object(self.context.tools, '_workspace', side_effect=delayed):
                 self.context.tasks.approve(task.id)

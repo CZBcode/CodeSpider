@@ -92,18 +92,59 @@ def _lexical(path, source):
         imports += re.findall(r'\b(?:require|import)\s*\(\s*[\'"]([^\'"]+)[\'"]\s*\)',clean)
         package = ''
         patterns = [(r'\bclass\s+(\w+)','class'),(r'\bfunction\s+(\w+)\s*\(','function'),
-                    (r'\b(?:const|let)\s+(\w+)\s*=\s*(?:async\s*)?(?:\([^)]*\)|\w+)\s*=>','function')]
+                    # TypeScript public contracts are declarations even though
+                    # they have no runtime function body. Comments and strings
+                    # have already been blanked above.
+                    (r'\binterface\s+(\w+)\s*(?:<[^;{}]*>)?\s*(?:extends\s+[^;{}]+)?\{', 'interface'),
+                    (r'\btype\s+(\w+)\s*(?:<[^;{}]*>)?\s*=', 'type'),
+                    (r'\benum\s+(\w+)\s*\{', 'enum'),
+                    (r'\b(?:const|let)\s+(\w+)\s*=\s*(?:async\s*)?(?:\([^)]*\)|\w+)\s*=>','function'),
+                    # Vue 2 methods and ordinary object function properties are
+                    # declared symbols too. Keep this bounded lexical evidence;
+                    # it does not infer dotted receiver names or call ownership.
+                    (r'(?:^|[,{])\s*(\w+)\s*:\s*(?:async\s+)?function\s*(?:\w+\s*)?\(', 'method'),
+                    (r'(?:^|[,{])\s*(?:async\s+)?(\w+)\s*\([^;{}]*\)\s*\{', 'method')]
     symbols = ([{'name':posixpath.basename(path)[:-4],'kind':'component','line':1}] if path.endswith('.vue') else [])
     for pattern,kind in patterns:
         for match in re.finditer(pattern,code):
             if match.group(1) in ('if','for','while','switch','catch'): continue
-            symbol={'name':match.group(1),'kind':kind,'line':code[:match.start()].count('\n')+1}
+            symbol={'name':match.group(1),'kind':kind,'line':code[:match.start(1)].count('\n')+1}
             if java and kind=='method':
                 owners=list(re.finditer(r'\b(?:class|interface|enum|record)\s+(\w+)',code[:match.start()]))
                 if owners: symbol['qualified_name']=owners[-1].group(1)+'.'+symbol['name']
             symbols.append(symbol)
+    if not java:
+        symbols.extend(_typed_members(code))
     return {'path':path,'parser':'java-lexical' if java else 'js-vue-lexical','symbols':symbols,
             'imports':sorted(set(imports)),'calls':[], 'package':package,'identifiers':set(re.findall(r'\b\w+\b',code))}
+
+
+def _typed_members(code):
+    """Bounded declaration evidence for JS/TS class and interface methods.
+
+    Track lexical brace depth so another class or a method's local function is
+    never attributed to the preceding declaration. This is not type resolution.
+    """
+    result = []
+    method = re.compile(r'(?:^|[;\n}])\s*(?:(?:public|private|protected|static|abstract|readonly|async|override)\s+)*'
+                        r'(\w+)\s*(?:<[^;{}]*>)?\s*\([^;{}]*\)\s*(?::\s*[^;{}=]+)?\s*[;{]')
+    for owner in re.finditer(r'\b(?:class|interface)\s+(\w+)[^;{}]*\{', code):
+        start = owner.end(); depth = 1; end = start
+        while end < len(code) and depth:
+            depth += (code[end] == '{') - (code[end] == '}')
+            end += 1
+        body = code[start:end-1]
+        cursor = 0; level = 0
+        for match in method.finditer(body):
+            # Include the delimiter before the declaration when calculating depth.
+            prefix = body[cursor:match.start(1)]
+            level += prefix.count('{') - prefix.count('}')
+            cursor = match.start(1)
+            if level != 0 or match.group(1) in ('if','for','while','switch','catch','function','return'):
+                continue
+            result.append({'name':match.group(1), 'qualified_name':owner.group(1)+'.'+match.group(1),
+                           'kind':'method', 'line':code[:start+match.start(1)].count('\n')+1})
+    return result
 
 
 def _dependencies(modules):

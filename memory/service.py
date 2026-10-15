@@ -28,10 +28,11 @@ class MemoryService:
         self.store.append("skills", item)
         return item
 
-    def search(self, scope_id: str, query: str) -> List[Dict[str, Any]]:
+    def search(self, scope_id: str, query: str, include_global: bool = True) -> List[Dict[str, Any]]:
         query_words = [word.lower() for word in query.split() if word.strip()]
-        candidates = [item for item in self._items() if item["scope_id"] in (scope_id, "global")]
-        candidates += [item for item in self.store.read("skills", []) if item.get("scope_id") in (scope_id, "global")]
+        scopes = (scope_id, "global") if include_global else (scope_id,)
+        candidates = [item for item in self._items() if item["scope_id"] in scopes]
+        candidates += [item for item in self.store.read("skills", []) if item.get("scope_id") in scopes]
         def score(item: Dict[str, Any]) -> int:
             text = str(item).lower()
             return sum(1 for word in query_words if word in text)

@@ -33,6 +33,7 @@ const context = vm.createContext({
   },
 });
 vm.runInContext(source, context);
+vm.runInContext("requestDialog = async () => window.confirm() ? true : null", context);
 await new Promise(resolve => setTimeout(resolve, 0));
 vm.runInContext('state.currentWorkspace = {id: "test-project", execution_mode: "safe"}', context);
 getNode('command').value = 'python3 -c "print(1)"';

@@ -28,8 +28,7 @@ class PolicyTests(unittest.TestCase):
             risk, tokens = policy.validate_command("python3 -m pytest tests/test_policy.py")
             self.assertEqual(risk, "low")
             self.assertEqual(tokens[:3], ["python3", "-m", "pytest"])
-            with self.assertRaises(ApprovalRequired):
-                policy.validate_read("README.md")
+            self.assertEqual(policy.validate_read("README.md"), os.path.join(os.path.realpath(root), "README.md"))
 
     def test_divergent_mode_only_prompts_for_high_risk(self):
         with tempfile.TemporaryDirectory() as root:

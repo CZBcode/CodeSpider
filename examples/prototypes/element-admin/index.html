@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>团队成员 · Element UI 原型</title>
+  <link rel="stylesheet" href="vendor/codespider/element-ui.css">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div id="app" v-cloak>
+    <aside class="sidebar"><b>◈ Studio</b><small>WORKSPACE</small><div class="selected">团队成员</div><div>项目概览</div><div>权限设置</div><footer>HTML / JS / CSS<br>交互原型</footer></aside>
+    <main>
+      <header><div><span class="eyebrow">WORKSPACE / MEMBERS</span><h1>团队成员</h1><p>管理成员与角色，让协作井然有序。</p></div><el-button type="primary" icon="el-icon-plus" @click="openCreate">添加成员</el-button></header>
+      <section class="metrics"><article><small>全部成员</small><strong>{{ members.length }}</strong><span>共同构建，持续交付</span></article><article><small>管理员</small><strong>{{ adminCount }}</strong><span>拥有项目管理权限</span></article><article><small>当前显示</small><strong>{{ filteredMembers.length }}</strong><span>按名称或邮箱实时筛选</span></article></section>
+      <section class="member-card"><div class="toolbar"><div><h2>成员目录</h2><p>团队的每一份贡献，都值得被看见。</p></div><el-input v-model="query" placeholder="搜索姓名或邮箱" prefix-icon="el-icon-search" clearable aria-label="搜索成员"></el-input></div>
+        <el-table :data="filteredMembers" empty-text="没有匹配的成员" style="width:100%"><el-table-column prop="name" label="姓名" min-width="130"></el-table-column><el-table-column prop="email" label="邮箱" min-width="220"></el-table-column><el-table-column label="角色" width="120"><template slot-scope="scope"><el-tag :type="scope.row.role === '管理员' ? '' : 'info'" size="small">{{ scope.row.role }}</el-tag></template></el-table-column><el-table-column label="状态" width="100"><template slot-scope="scope"><span class="status">● 活跃</span></template></el-table-column></el-table>
+      </section>
+      <p class="footnote">演示数据仅保存在当前页面中，刷新后恢复。</p>
+    </main>
+    <el-dialog title="添加团队成员" :visible.sync="dialogVisible" width="min(480px, 92vw)" @closed="resetForm">
+      <el-form ref="memberForm" :model="form" :rules="rules" label-position="top">
+        <el-form-item label="姓名" prop="name"><el-input v-model="form.name" placeholder="请输入成员姓名" aria-label="成员姓名"></el-input></el-form-item>
+        <el-form-item label="邮箱" prop="email"><el-input v-model="form.email" placeholder="name@example.com" aria-label="成员邮箱"></el-input></el-form-item>
+        <el-form-item label="角色"><el-select v-model="form.role" aria-label="成员角色"><el-option label="成员" value="成员"></el-option><el-option label="管理员" value="管理员"></el-option></el-select></el-form-item>
+      </el-form><span slot="footer"><el-button @click="dialogVisible = false">取消</el-button><el-button type="primary" @click="saveMember">保存成员</el-button></span>
+    </el-dialog>
+  </div>
+  <script src="vendor/codespider/vue.min.js"></script>
+  <script src="vendor/codespider/element-ui.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

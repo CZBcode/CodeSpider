@@ -1,0 +1,44 @@
+{
+  "vue.min.js": {
+    "package": "vue",
+    "version": "2.7.16",
+    "sha256": "3c1d4b0c549e8de9d4a9bafb12ab70b6a1ac747d07293b98c5b25b6632999afd",
+    "bytes": 107679
+  },
+  "VUE-LICENSE": {
+    "package": "vue",
+    "version": "2.7.16",
+    "sha256": "17fb24bc303763f3fe1911ee24e5225c7ad59f0e3a5d8123e9b730c100a306a6",
+    "bytes": 1091
+  },
+  "element-ui.js": {
+    "package": "element-ui",
+    "version": "2.15.14",
+    "sha256": "89d3c55e8fa03f177b1cc3824aede7c94b2ce4143f6a30f54ebb96e20eb42bc2",
+    "bytes": 664912
+  },
+  "element-ui.css": {
+    "package": "element-ui",
+    "version": "2.15.14",
+    "sha256": "dc86d4797565d05e88d63598128328e2ed6f02f7f6d950a36a1c4ca9eb9c8057",
+    "bytes": 240033
+  },
+  "fonts/element-icons.woff": {
+    "package": "element-ui",
+    "version": "2.15.14",
+    "sha256": "ab40a58972be2ceab32e7e35dab3131b959aae63835d7bda1a79ae51f9a73c17",
+    "bytes": 28200
+  },
+  "fonts/element-icons.ttf": {
+    "package": "element-ui",
+    "version": "2.15.14",
+    "sha256": "a30f5b3ba6a48822eae041e0ca5412a289125e4ba661d047dae565ac43b4a6b2",
+    "bytes": 55956
+  },
+  "ELEMENT-UI-LICENSE": {
+    "package": "element-ui",
+    "version": "2.15.14",
+    "sha256": "e9133c89038ed0089da92abbc833312c82c35f9be5e3eeb0f42f26937f8c11ec",
+    "bytes": 1082
+  }
+}

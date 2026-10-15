@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>留白设计工作室</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="hero" id="hero">
+    <div class="hero-content">
+      <h1 class="brand-name">留白</h1>
+      <p class="tagline">克制的设计，为品牌留出呼吸的空间</p>
+      <p class="intro">我们是一间面向小型品牌的独立设计工作室。以温暖的纸色与深墨般的文字，为您构建安静而有力量的视觉语言。</p>
+    </div>
+  </header>
+
+  <main>
+    <section class="services" id="services">
+      <h2 class="section-title">服务</h2>
+      <div class="service-grid">
+        <article class="service-card">
+          <h3>品牌识别</h3>
+          <p>从标志到完整的视觉系统，我们为品牌寻找最本质的表达方式，让每一个触点都传递一致的温度。</p>
+        </article>
+        <article class="service-card">
+          <h3>空间视觉</h3>
+          <p>为实体空间提供导视与环境图形设计，将平面的克制美学延伸至三维的行走体验中。</p>
+        </article>
+        <article class="service-card">
+          <h3>出版与印刷</h3>
+          <p>画册、书籍与独立出版物的排版设计。注重纸张触感、字体灰度与留白的节奏感。</p>
+        </article>
+      </div>
+    </section>
+
+    <section class="portfolio" id="portfolio">
+      <h2 class="section-title">精选案例</h2>
+      <div class="filter-controls" role="group" aria-label="案例筛选">
+        <button type="button" class="filter-btn active" data-category="all" aria-pressed="true">全部</button>
+        <button type="button" class="filter-btn" data-category="brand" aria-pressed="false">品牌</button>
+        <button type="button" class="filter-btn" data-category="space" aria-pressed="false">空间</button>
+      </div>
+      <div class="cases-grid" id="cases-grid"></div>
+    </section>
+
+    <section class="contact" id="contact">
+      <h2 class="section-title">联系我们</h2>
+      <form id="contact-form" novalidate>
+        <div class="form-group">
+          <label for="name">姓名</label>
+          <input type="text" id="name" name="name" required autocomplete="name">
+        </div>
+        <div class="form-group">
+          <label for="email">邮箱</label>
+          <input type="email" id="email" name="email" required autocomplete="email">
+        </div>
+        <div class="form-group">
+          <label for="description">项目描述</label>
+          <textarea id="description" name="description" rows="5" required></textarea>
+        </div>
+        <p class="error-message" id="error-message" aria-live="polite" hidden></p>
+        <button type="submit" class="submit-btn">提交咨询</button>
+      </form>
+      <div class="success-message" id="success-message" hidden>
+        <p>感谢您的咨询，我们会尽快与您联系。</p>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <p>&copy; 2024 留白设计工作室</p>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>

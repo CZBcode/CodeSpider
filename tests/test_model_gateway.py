@@ -108,8 +108,10 @@ class ModelGatewayTests(unittest.TestCase):
     def test_system_prompt_requires_exact_contract_review_for_framework_apis(self):
         prompt = ModelGateway._system_prompt()
         self.assertIn("requirements checklist", prompt)
-        self.assertIn("org.springframework.boot.test.mock.mockito.MockBean", prompt)
-        self.assertIn("empty string versus null", prompt)
+        from engineering_plugins import springboot, vue
+        self.assertIn("context.plugin", prompt)
+        self.assertIn("org.springframework.boot.test.mock.mockito.MockBean", springboot.MANIFEST["instructions"])
+        self.assertIn("empty string versus null", vue.MANIFEST["instructions"])
 
     def test_normalizes_string_response_wrapper_and_schema_alias(self):
         wrapped = {"response": json.dumps({

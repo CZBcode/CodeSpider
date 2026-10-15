@@ -20,7 +20,7 @@ class ApprovalRequired(PolicyError):
 class WorkspacePolicy:
     """Path and command guard for the two local execution modes.
 
-    safe: command execution and file-content reads require approval unless a
+    safe: command execution requires approval unless a
     command is explicitly allowlisted. divergent: ordinary commands are free
     to run; only high-risk commands require approval. Blocked commands remain
     blocked in both modes.
@@ -44,7 +44,8 @@ class WorkspacePolicy:
 
     def is_ignored(self, relative_path: str) -> bool:
         parts = relative_path.replace("\\", "/").split("/")
-        return any(part in self.ignored for part in parts)
+        normalized = '/'.join(part for part in parts if part != '.')
+        return any(part in self.ignored for part in parts) or normalized == 'vendor/codespider' or normalized.startswith('vendor/codespider/')
 
     @contextmanager
     def open_file(self, relative_path: str, mode: str = "r", create_parents: bool = False):
@@ -139,7 +140,4 @@ class WorkspacePolicy:
     def validate_read(self, relative_path: str, approved: bool = False) -> str:
         if type(approved) is not bool:
             raise PolicyError("approved must be a boolean")
-        path = self.resolve(relative_path)
-        if self.mode == "safe" and not approved:
-            raise ApprovalRequired("file_read", "安全执行模式要求确认读取工程文件内容", "confirm")
-        return path
+        return self.resolve(relative_path)

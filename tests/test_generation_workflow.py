@@ -6,7 +6,6 @@ from unittest.mock import patch
 
 from backend.app import AppContext
 from backend.model_gateway import ModelGateway, ModelContractError, MAX_ITEM_CHARS
-from backend.policy import ApprovalRequired
 from backend.tool_protocol import ToolRequest
 from code_intelligence.adapters import detect_project
 
@@ -28,11 +27,13 @@ class GenerationWorkflowTests(unittest.TestCase):
         self.workspace = self.context.workspaces.create(str(self.root))
         self.remote = {'provider':'custom','base_url':'http://unused.invalid','model':'test','api_key':'test'}
 
-    def test_context_requires_approval_before_model_call(self):
-        with patch.object(self.context.tasks.model, 'plan') as model:
-            with self.assertRaises(ApprovalRequired):
-                self.context.tasks.create(self.workspace.id, 'generate', model_settings=self.remote)
-            model.assert_not_called()
+    def test_context_read_does_not_prompt_or_write_before_task_approval(self):
+        response = turn([{'path':'main.py','operation':'create','replacement':'value = 42\n'}])
+        with patch.object(self.context.tasks.model, 'plan', return_value=response) as model:
+            task = self.context.tasks.create(self.workspace.id, 'generate', model_settings=self.remote)
+            model.assert_called_once()
+        self.assertEqual(task.status, 'created')
+        self.assertFalse((self.root/'main.py').exists())
 
     def test_existing_source_and_ast_reach_model_and_edits_keep_full_plan(self):
         old = 'def total():\n    return 0\n'

@@ -1,9 +1,11 @@
 # CodeSpider
 
+项目功能、实现取舍、完成程度、后续优先级及 AI coding 费用口径见 [项目实现说明](docs/implementation-overview.md)。
+
 CodeSpider 是一个面向代码工程的本地 Agent 工作台 MVP。当前实现提供：
 
 - 本地工作区创建、文件树和文件内容读取
-- Java Spring Boot、Python、Vue 工程识别
+- Java Spring Boot、Python、Vue、HTML / JS / CSS 前端原型工程识别
 - Python AST、Java/Vue 轻量符号索引
 - 任务计划、审批、异步执行、事件流和取消
 - 安全的文件读取、补丁写入和命令执行

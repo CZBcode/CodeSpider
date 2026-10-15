@@ -1,12 +1,13 @@
 """Versioned project design policy; source files cannot relax an approved policy."""
 import copy
 import json
+from fnmatch import fnmatch
 
 CONTRACT_FILE = 'design-contract.json'
 DEFAULT_CONTRACT = {
     'schema': 'codespider.design/v1', 'mode': 'advisory', 'require_design': False,
     'layers': [], 'require_layer_assignment': False, 'forbidden_imports': {},
-    'exclude': ['test_*.py', '*/test_*.py', 'tests/*', 'src/test/*', '*.spec.js', '*.test.js'],
+    'exclude': ['test_*.py', '*/test_*.py', 'tests/*', 'src/test/*', '*.spec.js', '*.test.js', '*.spec.ts', '*.test.ts'],
     'limits': {'function_lines': 60, 'parameters': 6, 'class_methods': 15, 'module_fan_out': 8},
 }
 DESIGN_GUIDANCE = """Respect existing architecture and public APIs; keep changes proportional to the use case.
@@ -85,7 +86,7 @@ def load_contract(files):
     return result
 
 
-def validate_design(design, files, changed_paths, report, required=False):
+def validate_design(design, files, changed_paths, report, required=False, excluded_paths=()):
     if design is None and not required:
         return
     if not isinstance(design,dict) or set(design) != {'modules','interfaces','patterns'}:
@@ -101,12 +102,13 @@ def validate_design(design, files, changed_paths, report, required=False):
         if not isinstance(path,str) or path not in files or path in documented:
             raise ValueError('design module path must exist and be unique')
         documented.add(path)
-        _text(module['responsibility'])
+        _text(module['responsibility'], 'module '+path+' responsibility')
         if not isinstance(module['depends_on'],list) or any(not isinstance(p,str) or p not in files for p in module['depends_on']):
             raise ValueError('design dependencies must name existing project paths')
     production = {m['path'] for m in report['modules']}
     if set(changed_paths) & production - documented:
         raise ValueError('design missing changed module responsibilities: '+', '.join(sorted(set(changed_paths) & production - documented)))
+    excluded_modules = {}
     for interface in design['interfaces']:
         if not isinstance(interface,dict) or set(interface) != {'path','symbol','inputs','outputs','errors'}:
             raise ValueError('design interface requires path, symbol, inputs, outputs, errors')
@@ -114,23 +116,35 @@ def validate_design(design, files, changed_paths, report, required=False):
         for key in ('inputs', 'outputs', 'errors'):
             value = interface[key]
             if isinstance(value, str):
-                _text(value)
+                # Providers also express no arguments/no error contract as an
+                # empty string. Outputs and missing fields remain mandatory.
+                if value != '' or key not in ('inputs', 'errors'):
+                    _text(value, 'interface '+interface['path']+' '+interface['symbol']+' '+key)
             elif not isinstance(value, (dict, list)) or len(json.dumps(value, ensure_ascii=False)) > 4000:
                 raise ValueError('interface descriptions must be bounded text, objects or arrays')
         module = next((m for m in report['modules'] if m['path']==interface['path']), None)
+        # Exclusion from production metrics does not mean a documented test
+        # symbol is missing. Check its source without adding it to those metrics.
+        path = interface['path']
+        if module is None and path in files and any(fnmatch(path, pattern) for pattern in excluded_paths):
+            if path not in excluded_modules:
+                from code_intelligence.structure import review_structure
+                evidence = review_structure({path:files[path]}, dict(DEFAULT_CONTRACT, exclude=[]))
+                excluded_modules[path] = next(iter(evidence['modules']), None)
+            module = excluded_modules[path]
         if not module or interface['symbol'] not in {name for s in module['symbols'] for name in (s['name'],s.get('qualified_name'))}:
             raise ValueError('design interface symbol was not found: '+interface['symbol'])
     for pattern in design['patterns']:
         if not isinstance(pattern,dict) or set(pattern) != {'name','reason'}:
             raise ValueError('design pattern requires name and reason')
         _text(pattern['name']); _text(pattern['reason'])
-    if required and production & set(changed_paths) and not design['interfaces']:
+    if required and production & set(changed_paths) and not any(i['path'] in production for i in design['interfaces']):
         raise ValueError('design requires at least one public interface contract')
 
 
-def _text(value):
+def _text(value, field='description'):
     if not isinstance(value,str) or not value.strip() or len(value)>4000:
-        raise ValueError('design descriptions must be non-empty bounded strings')
+        raise ValueError('design descriptions must be non-empty bounded strings: '+field)
 
 
 def review_proposal(context, patches, design=None, check_design=True, raise_on_block=True):
@@ -146,5 +160,5 @@ def review_proposal(context, patches, design=None, check_design=True, raise_on_b
         errors = [f['message'] for f in report['findings'] if f['severity']=='error']
         raise ValueError('design contract violation: '+'; '.join(errors[:5]))
     if check_design:
-        validate_design(design,files,[p['path'] for p in patches],report,contract['require_design'])
+        validate_design(design,files,[p['path'] for p in patches],report,contract['require_design'],contract['exclude'])
     return report

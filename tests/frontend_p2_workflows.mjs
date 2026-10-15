@@ -16,14 +16,18 @@ function harness() {
   const nodes = new Map(), requests = [], timers = [];
   let sequence = 0;
   function element() {
-    let html = '', text = '';
+    let html = '', text = '', ownButton;
     const classes = new Set();
     return {
       value: '', dataset: {}, children: [], disabled: false,
       classList: {add: c => classes.add(c), remove: c => classes.delete(c), contains: c => classes.has(c),
         toggle(c, on) { if (on) classes.add(c); else classes.delete(c); }},
       focus() {}, addEventListener() {},
-      get innerHTML() { return html; },
+      get innerHTML() { return html + this.children.map(child => child.outerHTML || child.innerHTML || child.textContent || '').join(''); },
+      get outerHTML() { return '<div>' + (this.innerHTML || this.textContent || '') + '</div>'; },
+      get button() { return ownButton || this.children.map(child=>child.button).find(Boolean); },
+      set button(value) { ownButton = value; },
+      setAttribute() {}, removeAttribute() {}, getAttribute() { return null; },
       set innerHTML(value) {
         html = value; text = ''; this.children = [];
         if (value.includes('class="approve-inline"')) this.button = {disabled: false, textContent: '批准执行'};
@@ -57,6 +61,7 @@ function harness() {
     },
   });
   vm.runInContext(source, context);
+  vm.runInContext("requestDialog = async () => window.confirm() ? true : null", context);
   app.run = code => vm.runInContext(code, context);
   app.open = id => app.run(`openWorkspace(${JSON.stringify(id)})`);
   app.visible = () => node('project-messages').children.map(n => n.innerHTML).join('\n');
@@ -172,7 +177,8 @@ for (const status of ['succeeded', 'failed', 'cancelled']) {
   assert.equal(app.run('run.finished'), true);
   assert.equal(app.visible(), '');
   await app.open('A');
-  assert.equal(app.visible().split(`final-${status}`).length - 1, 1);
+  assert.equal(app.run('projectSession("A").completedTasks.get("task-1").conclusion.textContent'), `final-${status}`);
+  assert.equal(app.node('project-messages').children.filter(n=>n.className?.includes('completed-turn')).length,1);
   const count = app.requests.length;
   await app.run('pollTask(run)');
   assert.equal(app.requests.length, count, 'finished polling must be idempotent');
@@ -254,14 +260,15 @@ console.log('PASS: project session isolation, delayed create/approval/output/set
   const app = await ready(), response = deferred();
   app.route = path => path === '/api/tasks' ? response.promise : undefined;
   const pending = app.run('createTask("generate a module")');
-  assert.ok(app.visible().includes('正在生成回复与代码'));
+  assert.ok(app.visible().includes('思考中'));
+  assert.ok(app.visible().includes('activity-dots'));
   assert.ok(!app.visible().includes('approve-inline'));
   response.resolve(ok({id: 'task-chat', workspace_id: 'A', summary: 'Prepared <module>',
     thinking: [], plan: [], patches: [{path: 'main.py', operation: 'create', replacement: 'x = 1'}]}));
   await pending;
   const html = app.visible();
   assert.ok(html.includes('Prepared &lt;module&gt;'));
-  assert.ok(!html.includes('正在生成回复与代码'));
+  assert.ok(!html.includes('activity-dots'));
   let depth = 0, found = false;
   for (const match of html.matchAll(/<details\b[^>]*>|<\/details>|<button\b[^>]*>/g)) {
     if (match[0].startsWith('<details')) depth++;
@@ -284,7 +291,7 @@ console.log('PASS: project session isolation, delayed create/approval/output/set
   assert.equal(app.visible(), '');
   await app.open('A');
   assert.ok(app.visible().includes('生成未完成：model unavailable'));
-  assert.ok(!app.visible().includes('正在生成回复与代码'));
+  assert.ok(!app.visible().includes('activity-dots'));
 }
 
 // Execution effects and validation output are visible and replay-safe.
@@ -410,3 +417,104 @@ console.log('PASS: task-scoped automatic collapse, durable history restore, pend
   assert.equal(app.run('authPrompts'),0);
 }
 console.log('PASS: stale authentication errors cannot lock a new account');
+
+// Saved artifacts are reloaded from disk after account/session caches disappear.
+{
+  const app = await ready();
+  app.run('resetConversations(); state.workspaces = [{id:"A",name:"A",root:"/A"}]');
+  app.route = (path, body) => body?.tool === 'document' && body.action === 'read'
+    ? ok({data:{exists:true,content:'# saved document <keep edits>'}}) : undefined;
+  await app.open('A');
+  app.run('switchPanel("artifacts")');
+  await tick();
+  assert.equal(app.node('doc-status').textContent, '已保存');
+  assert.equal(app.node('document-preview').textContent, '# saved document <keep edits>');
+  assert.equal(app.node('document-preview').classList.contains('hidden'), false);
+  assert.equal(app.requests.filter(r=>r.body?.tool === 'document' && r.body.action === 'generate').length, 0);
+}
+
+// Missing files, declined approval and network failures have distinct states.
+for (const result of ['missing', 'approval', 'network']) {
+  const app = await ready();
+  app.run('window.confirm=()=>false; state.currentPanel="artifacts"');
+  app.route = (path, body) => body?.tool === 'document' && body.action === 'read'
+    ? result === 'missing' ? ok({data:{exists:false}})
+      : {ok:false,status:result === 'approval' ? 409 : 500,
+         json:async()=>({error:{message:'unavailable',approval_required:result==='approval'}})}
+    : undefined;
+  await app.run('loadArtifacts()');
+  assert.equal(app.node('doc-status').textContent,
+    {missing:'未生成',approval:'读取失败',network:'读取失败'}[result]);
+  assert.equal(app.node('document-preview').classList.contains('hidden'), true);
+}
+
+// Safe-mode file, symbol and artifact reads never open confirmation dialogs.
+{
+  const app = await ready();
+  app.run('state.currentWorkspace.execution_mode="safe"; state.currentPanel="artifacts"');
+  app.route = (path, body) => body?.tool === 'document' && body.action === 'read'
+    ? ok({data:{exists:true,content:'saved document'}}) : undefined;
+  const before=app.prompts;
+  await app.run('loadExplorer()');
+  await app.run('previewFile("main.py")');
+  await app.run('loadArtifacts()');
+  assert.equal(app.prompts,before);
+  assert.equal(app.node('document-preview').textContent,'saved document');
+  assert.equal(app.node('preview-content').textContent,'current');
+}
+
+// In-flight artifact reads cannot leak across logout/project changes or undo regeneration.
+for (const action of ['logout', 'switch', 'generate']) {
+  const app = await ready(), response = deferred();
+  app.route = (path, body) => body?.tool === 'document' && body.action === 'read'
+    ? response.promise : undefined;
+  const pending = app.run('loadArtifacts()');
+  if (action === 'logout') app.run('resetConversations()');
+  if (action === 'switch') await app.open('B');
+  if (action === 'generate') await app.run('generateDocument()');
+  const before = app.node('document-preview').textContent;
+  response.resolve(ok({data:{exists:true,content:'stale document'}}));
+  await pending;
+  assert.equal(app.node('document-preview').textContent, before);
+}
+
+// Login returns to the home view, so an old open conversation is not left blank.
+{
+  const app = await ready();
+  app.run('loadAccount=async()=>{}; hideAuth=()=>{}; loadWorkspaces=async()=>{}; globalThis.lastView="free-chat"; setView=view=>lastView=view');
+  await app.run('submitAuth({preventDefault(){}})');
+  assert.equal(app.run('lastView'), 'home');
+}
+console.log('PASS: saved artifact restore, permission and error states, stale response isolation and relogin landing');
+
+// Market metadata is escaped; account switches discard even successful old responses.
+{
+  const app = await ready(), response = deferred();
+  app.run('state.market={items:[{id:"plugin.test",kind:"plugin",name:"<img src=x>",description:"<script>bad</script>",version:"1",installed:true,enabled:true}]}');
+  app.run('renderMarket()');
+  assert.ok(app.node('market-list').innerHTML.includes('&lt;img'));
+  app.node('market-kind').value='function';
+  app.run('renderMarket()');
+  assert.ok(app.node('market-list').innerHTML.includes('没有匹配'));
+  app.route=path=>path==='/api/market'?response.promise:undefined;
+  const pending=app.run('loadMarket()');
+  app.run('resetConversations()');
+  response.resolve(ok({items:[{id:'old-private-skill'}]}));
+  await pending;
+  assert.equal(app.run('state.market'),null);
+}
+// Approval repeats the captured parameters, even if the editor changes in flight.
+{
+  const app = await ready(), response=deferred();
+  app.run('globalThis.functionEditor={value:JSON.stringify({path:"original.py"})}; globalThis.functionOutput={textContent:""}; document.querySelector=s=>s.includes("input")?functionEditor:functionOutput');
+  app.route=(path,body)=>body?.tool==='function' && !body.approval.approved?response.promise:undefined;
+  const pending=app.run('invokeMarketFunction("function.workspace.patch")');
+  app.run('functionEditor.value=JSON.stringify({path:"changed.py"})');
+  response.resolve({ok:false,status:409,json:async()=>({error:{message:'confirm',approval_required:true}})});
+  await pending;
+  const calls=app.requests.filter(x=>x.body?.tool==='function');
+  assert.equal(calls.length,2);
+  assert.equal(calls[1].body.arguments.input.path,'original.py');
+  assert.equal(calls[1].body.workspace_id,'A');
+}
+console.log('PASS: market filtering, escaping, account isolation and immutable Function approval');

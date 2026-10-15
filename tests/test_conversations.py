@@ -16,6 +16,26 @@ from backend.store import JsonStore
 
 
 class ConversationTests(unittest.TestCase):
+    def test_durable_timing_and_legacy_unknown_duration(self):
+        with tempfile.TemporaryDirectory() as root:
+            service = ConversationService(JsonStore(root), JsonStore(root))
+            with patch('backend.conversations.now_iso', side_effect=[
+                    '2026-10-14T10:00:00+00:00', '2026-10-14T10:00:02.500000+00:00']):
+                turn = service.begin('alice', '', 'hello')
+                timing = service.finish(turn, reply='world')
+            self.assertEqual(timing['duration_ms'], 2500)
+            reopened = ConversationService(JsonStore(root), JsonStore(root))
+            self.assertEqual(reopened.history('alice', '')[0]['timing'], timing)
+            self.assertEqual(service.timing({'created_at': '2026-10-14T10:00:00+00:00'})['duration_ms'], None)
+            self.assertEqual(service.timing({'created_at': 'invalid', 'finished_at': 'invalid'})['duration_ms'], None)
+            task = {'status': 'failed', 'created_at': '2026-10-14T10:00:02.500000+00:00',
+                    'updated_at': '2026-10-14T10:01:10+00:00'}
+            timing = service.timing({'created_at': '2026-10-14T10:00:00+00:00'}, task)
+            self.assertEqual(timing['duration_ms'], 70000)
+            self.assertEqual(timing['generation_duration_ms'], 2500)
+            task['status'] = 'executing'
+            self.assertIsNone(service.timing({'created_at': '2026-10-14T10:00:00+00:00'}, task)['duration_ms'])
+
     def test_concurrent_saves_survive_reopening_and_remain_scoped(self):
         with tempfile.TemporaryDirectory() as root:
             service = ConversationService(JsonStore(root), JsonStore(root))
@@ -45,6 +65,7 @@ class ConversationTests(unittest.TestCase):
                 history = ConversationService(reopened, JsonStore(root)).history('alice', '')
                 self.assertEqual(history[0]['reply'], '已保存')
                 self.assertEqual(history[0]['status'], 'completed')
+                self.assertGreaterEqual(history[0]['timing']['duration_ms'], 0)
             finally:
                 reopened.close()
 
@@ -89,6 +110,8 @@ class ConversationHttpTests(unittest.TestCase):
     def test_restore_finished_task_after_restart_without_execution_or_billing(self):
         task = self.request('/api/tasks', {'workspace_id': self.workspace['id'], 'goal': 'inspect project'}, 201)
         self.assertEqual(self.history()[0]['task']['id'], task['id'])
+        self.assertIsNone(task['timing']['duration_ms'])
+        self.assertGreaterEqual(task['timing']['generation_duration_ms'], 0)
         self.request('/api/tasks/'+task['id']+'/approve', {})
         self.context.tasks.executor.shutdown(wait=True)
         before_usage = self.request('/api/auth/me')['usage']['total_calls']
@@ -100,10 +123,11 @@ class ConversationHttpTests(unittest.TestCase):
         self.assertEqual(len(restored), 1)
         self.assertEqual(restored[0]['goal'], 'inspect project')
         self.assertEqual(restored[0]['task']['status'], 'succeeded')
+        self.assertGreaterEqual(restored[0]['timing']['duration_ms'], task['timing']['generation_duration_ms'])
         self.assertEqual(restored[0]['task']['summary'], task['summary'])
         self.assertTrue(any(e['type']=='task.succeeded' for e in restored[0]['events']))
         self.assertEqual(self.request('/api/auth/me')['usage']['total_calls'], before_usage)
-        self.assertEqual(self.history(self.other), [])
+        self.request("/api/conversations?workspace_id="+self.workspace["id"], expected=403, opener=self.other)
         for path in ('', '/events'):
             self.request('/api/tasks/'+task['id']+path, expected=403, opener=self.other)
         for action in ('approve', 'cancel'):
@@ -132,6 +156,8 @@ class ConversationHttpTests(unittest.TestCase):
         history = self.request('/api/conversations')['items']
         self.assertEqual(history[0]['goal'], 'hello <script>')
         self.assertEqual(history[0]['reply'], reply['reply'])
+        self.assertEqual(history[0]['timing'], reply['timing'])
+        self.assertGreaterEqual(reply['timing']['duration_ms'], 0)
         self.assertIn('hello <script>', reply['reply'])
         self.assertEqual(self.request('/api/auth/me')['user']['balance'], 499)
         self.assertEqual(self.request('/api/conversations', opener=self.other)['items'], [])

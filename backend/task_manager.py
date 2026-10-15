@@ -8,15 +8,18 @@ from backend.models import Event, Task, new_id, now_iso
 from memory.service import MemoryService
 from backend.model_gateway import ModelGateway
 from backend.tool_protocol import ToolRequest
+from backend.market import MarketService
+from engineering_plugins.registry import for_type
 
 
 class TaskManager:
     TOOL_RETRIES = 2
 
-    def __init__(self, store: Any, workspaces: Any, model: Optional[ModelGateway] = None, tools: Any = None):
+    def __init__(self, store: Any, workspaces: Any, model: Optional[ModelGateway] = None, tools: Any = None, market: Any = None):
         self.store = store
         self.workspaces = workspaces
         self.tools = tools
+        self.market = market or MarketService(store)
         self.memory = getattr(tools, "memory", None) or MemoryService(store)
         self.model = model or ModelGateway()
         self.executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="codespider-task")
@@ -38,43 +41,76 @@ class TaskManager:
             self.store.write("events", events)
             return event
 
-    def get(self, task_id: str) -> Task:
+    def get(self, task_id: str, owner_id: str = "") -> Task:
         for item in self._tasks():
             if item["id"] == task_id:
+                if owner_id and item.get("owner_id") != owner_id:
+                    raise PermissionError("无权访问该会话任务")
                 return Task(**item)
         raise KeyError("task not found")
 
     def events(self, task_id: str, after: int = 0) -> List[Event]:
         return [Event(**item) for item in self.store.read("events", []) if item["task_id"] == task_id and item["sequence"] > after]
 
-    def create(self, workspace_id: str, goal: str, patches: Optional[List[Dict[str, Any]]] = None, model_id: str = "", on_model_call: Any = None, model_settings: Optional[Dict[str, Any]] = None, context_approved: bool = False, owner_id: str = "", on_generation_start: Any = None) -> Task:
+    def create(self, workspace_id: str, *args, **kwargs) -> Task:
+        with self.workspaces.lease(workspace_id):
+            return self._create(workspace_id, *args, **kwargs)
+
+    def _create(self, workspace_id: str, goal: str, patches: Optional[List[Dict[str, Any]]] = None, model_id: str = "", on_model_call: Any = None, model_settings: Optional[Dict[str, Any]] = None, context_approved: bool = False, owner_id: str = "", on_generation_start: Any = None, conversation_context: Optional[Dict[str, Any]] = None, plugin_id: str = "", background_generation: bool = False, progress=None, checkpoint=None, save_checkpoint=None, intent=None) -> Task:
         if not isinstance(goal, str) or not goal.strip():
             raise ValueError("goal cannot be empty")
-        workspace = self.workspaces.get(workspace_id)
+        workspace = self.workspaces.get(workspace_id, owner_id=owner_id)
         if type(context_approved) is not bool:
             raise ValueError("context_approved must be a boolean")
+        conversation_turn_id = on_generation_start() if on_generation_start else ""
         config = model_settings if model_settings is not None else self.model.config()
         remote = config.get("provider") not in ("local", "", None) and bool(config.get("base_url"))
         context = {"project_type": workspace.project_type}
+        selection = self.market.select(goal + "\n" + workspace.description, workspace.project_type, owner_id, plugin_id) if self.market else {"plugin": None, "skills": [], "functions": [], "selection": "generic"}
+        if selection.get("requires_choice") and not plugin_id and not background_generation:
+            selection = dict(selection, plugin=None)
+        if selection.get("plugin"):
+            context["plugin"] = selection["plugin"]
+        context["skills"] = selection.get("skills", [])
+        context["functions"] = selection.get("functions", [])
         if remote and not patches:
-            from backend.policy import ApprovalRequired
-            if workspace.execution_mode == "safe" and not context_approved:
-                raise ApprovalRequired("generation_context", "生成代码需要读取工程源码与符号并发送给所选模型，请确认", "confirm")
-            response = self.tools.call(ToolRequest("code", "context", {"goal": goal}, workspace_id=workspace.id,
+            response = self.tools.call(ToolRequest("code", "context", {"goal": goal}, workspace_id=workspace.id, owner_id=owner_id,
                 approval={"approved": context_approved}))
             if not response.ok:
                 raise ValueError((response.error or {}).get("message", "cannot read generation context"))
             context.update(response.data, require_patches=True)
-        conversation_turn_id = on_generation_start() if on_generation_start else ""
-        turn = self._make_turn(workspace, goal, model_settings, context)
-        if self.workspaces.get(workspace_id).to_dict() != workspace.to_dict():
+        if conversation_context is not None:
+            context["conversation"] = conversation_context
+        if intent and intent.get('status') == 'ready':
+            context['intent'] = intent
+        if selection.get("plugin") and context.get("project_type") == "unknown":
+            context["project_type"] = selection["plugin"]["project_types"][0]
+        if progress:
+            progress({"stage": selection.get("recommendation") or "正在读取工程上下文", "recommendation": selection.get("recommendation", "")})
+        if background_generation and remote:
+            from backend.project_generator import ProjectGenerator
+            settings = model_settings or self.model.settings._raw()
+            staged_initial = (context.get("plugin", {}).get("staged_initial_generation") is True
+                              and workspace.project_type == "unknown")
+            if context.get("require_patches") and (staged_initial or ProjectGenerator.needed(goal)):
+                turn = ProjectGenerator(self.model).generate(goal, context, settings, on_model_call,
+                    progress, checkpoint, save_checkpoint)
+            else:
+                turn = self.model.validate_turn(self.model.plan(goal, context, settings_override=settings, on_model_call=on_model_call))
+                if context.get("require_patches"):
+                    self.model.validate_generation(turn, context)
+        else:
+            turn = self._make_turn(workspace, goal, model_settings, context)
+        if self.workspaces.get(workspace_id, owner_id=owner_id).to_dict() != workspace.to_dict():
             raise ValueError("工程设置已改变，请重新生成补丁")
-        if on_model_call:
+        if on_model_call and not (background_generation and remote):
             on_model_call()
         task = Task(new_id("task"), workspace_id, goal.strip(), plan=turn["steps"], patches=patches or turn.get("patches", []), thinking=turn["thinking"], tool_calls=turn.get("tool_calls", []), response_schema=turn.get("schema", "agent.turn/v1"), model_id=model_id)
         task.design = turn.get("design", {})
         task.summary = turn["summary"]
         task.owner_id = owner_id
+        task.plugin_id = (selection.get("plugin") or {}).get("id", "")
+        task.capabilities = selection
         task.conversation_turn_id = conversation_turn_id
         task.design_contract = context.get("design_contract", {})
         task.design_review = turn.get("design_review", {})
@@ -91,13 +127,19 @@ class TaskManager:
         return generated
 
     def approve(self, task_id: str) -> Task:
+        task = self.get(task_id)
+        with self.workspaces.lease(task.workspace_id):
+            self.workspaces.get(task.workspace_id, owner_id=task.owner_id)
+            return self._approve(task_id)
+
+    def _approve(self, task_id: str) -> Task:
         with self._lock:
             task = self.get(task_id)
             if task.status not in ("created", "waiting_approval"):
                 raise ValueError("task is not awaiting approval")
             # Legacy pending tasks acquire their snapshot once, at approval.
             if not task.workspace_snapshot:
-                task.workspace_snapshot = self.workspaces.get(task.workspace_id).to_dict()
+                task.workspace_snapshot = self.workspaces.get(task.workspace_id, owner_id=task.owner_id).to_dict()
             task.status = "executing"
             task.updated_at = now_iso()
             self._save_task(task)
@@ -119,7 +161,7 @@ class TaskManager:
             self._save_task(task)
             self._emit(task.id, "task.cancel_requested", {})
         if needs_agent:
-            request = ToolRequest(tool="process", action="cancel", task_id=task_id, workspace_id=task.workspace_id)
+            request = ToolRequest(tool="process", action="cancel", task_id=task_id, workspace_id=task.workspace_id, owner_id=task.owner_id)
             self._emit(task_id, "tool.call", {"request": request.to_dict(), "collapsed": True})
             response = self.tools.call(request)
             self._emit(task_id, "tool.result", response.to_dict())
@@ -139,9 +181,9 @@ class TaskManager:
     def _run(self, task_id: str) -> None:
         task = self.get(task_id)
         try:
-            workspace = self.workspaces.get(task.workspace_id, task.id)
+            workspace = self.workspaces.get(task.workspace_id, task.id, task.owner_id)
             self._emit(task_id, "thinking.started", {"label": "思考中", "thinking": task.thinking, "collapsed": True})
-            index_response = self._call_tool(task_id, ToolRequest(tool="code", action="index", workspace_id=task.workspace_id, task_id=task_id, approval={"approved": True, "source": "task_approval"}))
+            index_response = self._call_tool(task_id, ToolRequest(tool="code", action="index", workspace_id=task.workspace_id, owner_id=task.owner_id, task_id=task_id, approval={"approved": True, "source": "task_approval"}))
             self._emit(task_id, "index.updated", index_response.data)
             if task_id in self._cancelled:
                 return
@@ -150,28 +192,33 @@ class TaskManager:
                 for patch in task.patches:
                     operation = patch.get("operation", "apply_patch" if "expected" in patch else "write_file")
                     if operation == "apply_patch":
-                        request = ToolRequest(tool="workspace", action="apply_patch", workspace_id=task.workspace_id, task_id=task_id, arguments={"path": patch.get("path", ""), "expected": patch.get("expected", ""), "replacement": patch.get("replacement", "")}, approval={"approved": True, "source": "task_approval"})
+                        request = ToolRequest(tool="workspace", action="apply_patch", workspace_id=task.workspace_id, owner_id=task.owner_id, task_id=task_id, arguments={"path": patch.get("path", ""), "expected": patch.get("expected", ""), "replacement": patch.get("replacement", "")}, approval={"approved": True, "source": "task_approval"})
                     else:
-                        request = ToolRequest(tool="workspace", action="create_file" if operation == "create" else "write_file", workspace_id=task.workspace_id, task_id=task_id, arguments={"path": patch.get("path", ""), "content": patch.get("replacement", patch.get("content", ""))}, approval={"approved": True, "source": "task_approval"})
+                        request = ToolRequest(tool="workspace", action="create_file" if operation == "create" else "write_file", workspace_id=task.workspace_id, owner_id=task.owner_id, task_id=task_id, arguments={"path": patch.get("path", ""), "content": patch.get("replacement", patch.get("content", ""))}, approval={"approved": True, "source": "task_approval"})
                     result = self._call_tool(task_id, request)
                     self._emit(task_id, "file.changed", result.data)
-                index_response = self._call_tool(task_id, ToolRequest(tool="code", action="index", workspace_id=task.workspace_id,
+                index_response = self._call_tool(task_id, ToolRequest(tool="code", action="index", workspace_id=task.workspace_id, owner_id=task.owner_id,
                     task_id=task_id, approval={"approved": True, "source": "task_approval"}))
                 self._emit(task_id, "index.updated", index_response.data)
             else:
-                model_config = self.model.config()
-                self._emit(task_id, "agent.notice", {"message": "MVP 执行器已完成工程分析。真实模型接入后，将在此处根据目标生成补丁。", "model": "%s/%s" % (model_config.get("provider"), model_config.get("model"))})
-            detection = self._call_tool(task_id, ToolRequest(tool="code", action="detect", workspace_id=task.workspace_id,
+                self._emit(task_id, "agent.notice", {"message": "已完成工程分析，本次任务没有文件补丁。", "model_id": task.model_id})
+            detection = self._call_tool(task_id, ToolRequest(tool="code", action="detect", workspace_id=task.workspace_id, owner_id=task.owner_id,
                 task_id=task_id, approval={"approved": True, "source": "task_approval"}))
             project_type = detection.data["project_type"]
             self._emit(task_id, "project.detected", detection.data)
-            verify_command = self._default_verify(project_type)
+            detected_plugin = detection.data.get("plugin_id", "")
+            if task.plugin_id and task.patches and detected_plugin != task.plugin_id:
+                raise ExecutionError("生成工程的技术栈与已选择插件不一致，请修复工程配置")
+            if detected_plugin:
+                self.market.require(detected_plugin, task.owner_id, "plugin")
+            verify_command = detection.data.get("verify_command") or self._default_verify(project_type)
             if task.patches and not verify_command:
                 raise ExecutionError("无法识别生成代码的工程类型，未执行验证；请补充工程配置后重新验证")
-            commands = detection.data.get("setup_commands", []) + ([verify_command] if verify_command else []) + detection.data.get("verification_commands", [])
+            auto_preview = bool(task.patches and detection.data.get("preview_supported"))
+            commands = detection.data.get("setup_commands", []) + ([verify_command] if verify_command and not auto_preview else []) + detection.data.get("verification_commands", [])
             for command in dict.fromkeys(commands):
                 timeout = 300 if command in detection.data.get("setup_commands", []) else 180
-                request = ToolRequest(tool="process", action="run", workspace_id=task.workspace_id, task_id=task_id, arguments={"command": command, "timeout": timeout}, approval={"approved": True, "source": "task_approval"})
+                request = ToolRequest(tool="process", action="run", workspace_id=task.workspace_id, owner_id=task.owner_id, task_id=task_id, arguments={"command": command, "timeout": timeout}, approval={"approved": True, "source": "task_approval"})
                 result = self._call_tool(task_id, request)
                 self._emit(task_id, "process.output", dict(result.data, command=command))
                 if result.data.get("exit_code") != 0:
@@ -180,8 +227,12 @@ class TaskManager:
                     raise ExecutionError("发现测试目录但没有执行任何 unittest 测试，请检查测试框架和发现配置")
             if task.patches:
                 self._review_design(task)
+            if auto_preview:
+                self._build_preview(task)
             self._emit(task_id, "verification.completed", {"commands": list(dict.fromkeys(commands))})
             completion_message = "文件修改已完成，验证命令通过。" if task.patches else "分析与验证已完成，未修改文件。"
+            if auto_preview:
+                completion_message += "最新前端已构建并发布，可在「预览」中查看。"
             if commands == ["python3 -m compileall -q ."]:
                 completion_message += "仅检查了 Python 语法，未发现可执行测试。"
             with self._lock:
@@ -204,11 +255,37 @@ class TaskManager:
                 self._save_task(task)
                 self._emit(task_id, "task.failed", {"error": friendly_error, "details": raw_error if raw_error != friendly_error else ""})
 
+    def _build_preview(self, task):
+        def request(action, arguments=None):
+            return ToolRequest('preview', action, arguments or {}, workspace_id=task.workspace_id,
+                owner_id=task.owner_id, task_id=task.id, approval={'approved': True, 'source': 'task_approval'})
+        result = self._call_tool(task.id, request('build'))
+        build_id = result.data['job']['id']
+        self._emit(task.id, 'preview.building', {'build_id': build_id})
+        while True:
+            if task.id in self._cancelled:
+                raise ExecutionError('task cancelled')
+            status = self.tools.call(request('status'))
+            if not status.ok:
+                raise ExecutionError((status.error or {}).get('message', '读取构建状态失败'))
+            job = status.data.get('job', {})
+            if job.get('id') != build_id:
+                raise ExecutionError('构建版本已变化，请重新执行验证')
+            if job.get('status') not in ('queued', 'installing', 'building'):
+                self._emit(task.id, 'preview.built', {'build_id': build_id, 'status': job.get('status'), 'output': job.get('log', ''),
+                    'command': job.get('command', '前端构建'), 'exit_code': 0 if job.get('status') == 'ready' else 1})
+                if job.get('status') != 'ready':
+                    raise ExecutionError(job.get('error') or '前端构建失败；上次成功预览已保留')
+                break
+            time.sleep(.5)
+        published = self._call_tool(task.id, request('deploy', {'build_id': build_id}))
+        self._emit(task.id, 'preview.published', published.data)
+
     def _review_design(self, task, proposed=False):
         result = self._call_tool(task.id, ToolRequest("code", "design_review",
             {"patches": task.patches if proposed else [], "design": task.design or None,
              "design_contract": task.design_contract, "check_design": bool(task.design_contract)},
-            workspace_id=task.workspace_id, task_id=task.id,
+            workspace_id=task.workspace_id, owner_id=task.owner_id, task_id=task.id,
             approval={"approved": True, "source": "task_approval"}))
         task.design_review = result.data
         self._emit(task.id, "design.reviewed", dict(result.data, phase="before_write" if proposed else "after_tests"))
@@ -277,4 +354,5 @@ class TaskManager:
 
     @staticmethod
     def _default_verify(project_type: str) -> Optional[str]:
-        return {"python": "python3 -m compileall -q .", "java-springboot": "mvn -q test", "vue": "npm run build"}.get(project_type)
+        plugin = for_type(project_type)
+        return plugin.MANIFEST.get("verify_command") if plugin else None

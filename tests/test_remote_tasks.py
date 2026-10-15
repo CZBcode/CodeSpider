@@ -10,7 +10,7 @@ from unittest.mock import patch
 from backend.app import AppContext
 from backend.tool_protocol import ToolRequest
 from codespider.ipc import request
-from tests.test_task_regressions import wait_until
+from tests.test_task_regressions import wait_until, override_verification
 
 
 class RemoteTaskTests(unittest.TestCase):
@@ -38,7 +38,7 @@ class RemoteTaskTests(unittest.TestCase):
                         'approval': {'approved': 'false'}})
                     self.assertFalse(rejected.ok)
                     script = "import os,time; from pathlib import Path; Path('pid').write_text(str(os.getpid())); time.sleep(10); Path('late').write_text('bad')"
-                    context.tasks._default_verify = lambda _: shlex.quote(sys.executable) + ' -c ' + shlex.quote(script)
+                    override_verification(context, shlex.quote(sys.executable) + ' -c ' + shlex.quote(script))
                     task = context.tasks.create(workspace.id, 'cancel independent Agent command')
                     context.tasks.approve(task.id)
                     wait_until(lambda: (root / 'pid').exists())

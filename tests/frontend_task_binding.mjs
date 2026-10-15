@@ -8,10 +8,14 @@ function harness() {
   const nodes = new Map(), cards = [], requests = [];
   let sequence = 0;
   function element() {
-    let html = '';
+    let html = '', ownButton;
     return {value: '', textContent: '', dataset: {}, children: [], disabled: false,
       classList: {add() {}, remove() {}, toggle() {}}, focus() {}, addEventListener() {},
-      get innerHTML() { return html; },
+      get innerHTML() { return html + this.children.map(child => child.outerHTML || child.innerHTML || child.textContent || '').join(''); },
+      get outerHTML() { return '<div>' + (this.innerHTML || this.textContent || '') + '</div>'; },
+      get button() { return ownButton || this.children.map(child=>child.button).find(Boolean); },
+      set button(value) { ownButton = value; },
+      setAttribute() {},
       set innerHTML(value) {
         html = value;
         if (value.includes('class="approve-inline"')) {

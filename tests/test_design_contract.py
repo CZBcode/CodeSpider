@@ -70,6 +70,29 @@ class Service:
         self.assertTrue(review_structure({},contract(),incomplete=True)['blocking'])
         self.assertFalse(review_structure({},contract('advisory'),incomplete=True)['blocking'])
 
+    def test_vue_object_methods_are_real_contract_symbols_not_invented_receivers(self):
+        source = '''function filterMembers(items) { return items; }
+new Vue({ methods: {
+  resetForm: function (name) { if (name) { return name; } },
+  async submitMember(name) { return name; },
+  label: "phantom: function () {}",
+  // absent: function () {}
+  value: filterMembers([])
+} });'''
+        policy = dict(DEFAULT_CONTRACT, require_design=True)
+        design = {'modules':[{'path':'app.js','responsibility':'Member actions','depends_on':[]}],
+                  'interfaces':[{'path':'app.js','symbol':name,'inputs':[],'outputs':'result','errors':[]}
+                                for name in ('filterMembers','resetForm','submitMember')], 'patterns':[]}
+        patches = [{'path':'app.js','replacement':source}]
+        report = review_proposal({'files':{},'design_contract':policy}, patches, design)
+        self.assertTrue(report['passed'])
+        names = {s['name'] for s in report['modules'][0]['symbols']}
+        self.assertEqual(names, {'filterMembers','resetForm','submitMember'})
+        for missing in ('Vue.data','Vue.methods.resetForm','absent','phantom','value','if'):
+            design['interfaces'][0]['symbol'] = missing
+            with self.subTest(missing=missing), self.assertRaisesRegex(ValueError, 'not found'):
+                review_proposal({'files':{},'design_contract':policy}, patches, design)
+
     def test_metrics_warn_instead_of_inventing_semantic_failure(self):
         policy=contract();policy['limits']['parameters']=1
         report=review_structure({'f.py':'def function(a,b): return a+b'},policy)
@@ -108,6 +131,20 @@ class Service:
         report=review_structure({'shop/__init__.py':'from .logic import run','shop/logic.py':'def run(): return 1'},contract())
         self.assertEqual(report['metrics']['dependencies'],1)
 
+    def test_documented_excluded_tests_are_checked_without_entering_production_metrics(self):
+        patches=[{'path':'service/core.py','replacement':'def run(): return 1'},
+                 {'path':'tests/test_core.py','replacement':'class TestCore:\n def test_run(self): pass\n'}]
+        design={'modules':[{'path':'service/core.py','responsibility':'Compute','depends_on':[]}],
+                'interfaces':[{'path':'tests/test_core.py','symbol':'TestCore','inputs':'none','outputs':'tests','errors':'assertion'}],'patterns':[]}
+        report=review_proposal({'files':{},'design_contract':contract()},patches,design)
+        self.assertEqual(report['metrics']['modules'],1)
+        self.assertEqual(report['modules'][0]['path'],'service/core.py')
+        with self.assertRaisesRegex(ValueError,'at least one public interface'):
+            review_proposal({'files':{},'design_contract':dict(contract(),require_design=True)},patches,design)
+        design['interfaces'][0]['symbol']='ImaginaryTest'
+        with self.assertRaisesRegex(ValueError,'not found'):
+            review_proposal({'files':{},'design_contract':contract()},patches,design)
+
     def test_framework_import_in_domain_and_implicit_java_vue_symbols(self):
         policy=contract();policy['forbidden_imports']={'service':['org.springframework','requests']}
         report=review_structure({'service/Policy.java':'package service; import org.springframework.stereotype.Service; public interface Policy { int total(int a, int b); }',
@@ -135,6 +172,13 @@ class Service:
                 'interfaces':[{'path':'service/core.py','symbol':'run','inputs':{},'outputs':'int','errors':[]}],'patterns':[]}
         self.assertTrue(review_proposal({'files':{},'design_contract':policy},
                                        [{'path':'service/core.py','replacement':'def run(): return 1'}],design)['passed'])
+        design['interfaces'][0].update(inputs='', errors='')
+        self.assertTrue(review_proposal({'files':{},'design_contract':policy},
+                                       [{'path':'service/core.py','replacement':'def run(): return 1'}],design)['passed'])
+        design['interfaces'][0]['outputs'] = ''
+        with self.assertRaisesRegex(ValueError, 'non-empty'):
+            review_proposal({'files':{},'design_contract':policy},
+                            [{'path':'service/core.py','replacement':'def run(): return 1'}],design)
 
 
 class DesignWorkflowTests(unittest.TestCase):
@@ -146,10 +190,8 @@ class DesignWorkflowTests(unittest.TestCase):
         self.workspace=self.app.workspaces.create(str(self.root))
         (self.root/'design-contract.json').write_text(json.dumps(contract()))
 
-    def test_standard_tool_requires_approval_and_exposes_findings(self):
+    def test_readonly_standard_tool_needs_no_approval_and_exposes_findings(self):
         request=ToolRequest('code','design_review',workspace_id=self.workspace.id)
-        self.assertFalse(self.app.tools.call(request).ok)
-        request.approval={'approved':True}
         response=self.app.tools.call(request)
         self.assertTrue(response.ok);self.assertEqual(response.data['schema'],'codespider.design-review/v1')
 

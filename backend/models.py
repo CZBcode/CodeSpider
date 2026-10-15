@@ -22,6 +22,7 @@ class Workspace:
     description: str = ""
     execution_mode: str = "safe"
     command_allowlist: List[str] = field(default_factory=list)
+    owner_id: str = ""
     created_at: str = field(default_factory=now_iso)
 
     def to_dict(self) -> Dict[str, Any]:
@@ -50,6 +51,8 @@ class Task:
     summary: str = ""
     owner_id: str = ""
     conversation_turn_id: str = ""
+    plugin_id: str = ""
+    capabilities: Dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)

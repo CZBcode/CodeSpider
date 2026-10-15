@@ -19,6 +19,7 @@ class ToolRequest:
     arguments: Dict[str, Any] = field(default_factory=dict)
     task_id: str = ""
     workspace_id: str = ""
+    owner_id: str = ""
     request_id: str = field(default_factory=new_request_id)
     api_version: str = TOOL_API_VERSION
     approval: Dict[str, Any] = field(default_factory=dict)
@@ -43,6 +44,7 @@ class ToolRequest:
             arguments=arguments,
             task_id=str(payload.get("task_id", "")),
             workspace_id=str(payload.get("workspace_id", "")),
+            owner_id=str(payload.get("owner_id", "")),
             request_id=str(payload.get("request_id") or new_request_id()),
             api_version=TOOL_API_VERSION,
             approval=approval,

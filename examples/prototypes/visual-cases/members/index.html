@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>成员管理</title>
+  <link rel="stylesheet" href="vendor/codespider/element-ui.css">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div id="app" v-cloak>
+    <main class="page-container">
+      <header class="page-header">
+        <h1 class="page-title">成员管理</h1>
+        <p class="page-subtitle">查看和管理团队成员信息</p>
+      </header>
+
+      <section class="toolbar">
+        <el-input
+          v-model="searchQuery"
+          placeholder="按姓名筛选"
+          clearable
+          aria-label="按姓名筛选成员"
+          class="filter-input"
+          prefix-icon="el-icon-search"
+        ></el-input>
+        <el-button type="primary" @click="openAddDialog" aria-label="添加成员">
+          <i class="el-icon-plus"></i> 添加成员
+        </el-button>
+      </section>
+
+      <section class="table-wrapper">
+        <el-table :data="filteredMembers" stripe border style="width: 100%">
+          <el-table-column prop="name" label="姓名" min-width="120"></el-table-column>
+          <el-table-column prop="email" label="邮箱" min-width="200"></el-table-column>
+          <el-table-column prop="role" label="角色" min-width="120"></el-table-column>
+          <el-table-column prop="status" label="状态" min-width="100">
+            <template slot-scope="scope">
+              <el-tag
+                :type="scope.row.status === '活跃' ? 'success' : 'info'"
+                size="small"
+                effect="plain"
+              >{{ scope.row.status }}</el-tag>
+            </template>
+          </el-table-column>
+          <template slot="empty">
+            <div class="empty-state">
+              <i class="el-icon-search empty-icon"></i>
+              <p class="empty-text">未找到匹配的成员</p>
+            </div>
+          </template>
+        </el-table>
+      </section>
+    </main>
+
+    <el-dialog
+      title="添加成员"
+      :visible.sync="dialogVisible"
+      custom-class="member-dialog"
+      width="480px"
+      @close="closeAddDialog"
+    >
+      <el-form
+        ref="memberForm"
+        :model="newMember"
+        :rules="rules"
+        label-width="60px"
+        label-position="right"
+      >
+        <el-form-item label="姓名" prop="name">
+          <el-input v-model="newMember.name" placeholder="请输入姓名" aria-label="姓名"></el-input>
+        </el-form-item>
+        <el-form-item label="邮箱" prop="email">
+          <el-input v-model="newMember.email" placeholder="请输入邮箱" aria-label="邮箱"></el-input>
+        </el-form-item>
+        <el-form-item label="角色" prop="role">
+          <el-select v-model="newMember.role" placeholder="请选择角色" aria-label="角色" style="width:100%">
+            <el-option label="管理员" value="管理员"></el-option>
+            <el-option label="编辑" value="编辑"></el-option>
+            <el-option label="查看者" value="查看者"></el-option>
+          </el-select>
+        </el-form-item>
+        <el-form-item label="状态" prop="status">
+          <el-select v-model="newMember.status" placeholder="请选择状态" aria-label="状态" style="width:100%">
+            <el-option label="活跃" value="活跃"></el-option>
+            <el-option label="未激活" value="未激活"></el-option>
+          </el-select>
+        </el-form-item>
+      </el-form>
+      <div slot="footer" class="dialog-footer">
+        <el-button @click="closeAddDialog">取消</el-button>
+        <el-button type="primary" @click="saveMember">保存</el-button>
+      </div>
+    </el-dialog>
+  </div>
+
+  <script src="vendor/codespider/vue.min.js"></script>
+  <script src="vendor/codespider/element-ui.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

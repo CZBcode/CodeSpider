@@ -6,6 +6,7 @@ import time
 from typing import Any, Dict, List
 
 from backend.policy import WorkspacePolicy
+from agent_client.sandbox import prepare
 
 
 class ProcessManager:
@@ -26,9 +27,10 @@ class ProcessManager:
                 raise ValueError("agent is stopping")
             log_handle = open(log_path, "a", encoding="utf-8")
             try:
+                invocation, environment = prepare(policy, tokens, {key: value for key, value in os.environ.items() if key in ("PATH", "HOME", "LANG", "LC_ALL", "JAVA_HOME", "PYTHONPATH", "VIRTUAL_ENV", "NODE_PATH")})
                 process = subprocess.Popen(
-                    tokens, cwd=policy.root, stdout=log_handle, stderr=subprocess.STDOUT,
-                    env={key: value for key, value in os.environ.items() if key in ("PATH", "HOME", "LANG", "LC_ALL", "JAVA_HOME", "PYTHONPATH", "VIRTUAL_ENV", "NODE_PATH")},
+                    invocation, cwd=policy.root, stdout=log_handle, stderr=subprocess.STDOUT,
+                    env=environment,
                     start_new_session=True,
                 )
             except Exception:
